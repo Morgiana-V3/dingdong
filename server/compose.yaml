@@ -1,0 +1,26 @@
+services:
+  dingdong:
+    image: dingdong-server:0.1.0
+    build: .
+    restart: unless-stopped
+    ports:
+      - "${DINGDONG_BIND:-127.0.0.1}:${DINGDONG_PORT:-8080}:8080"
+    environment:
+      DINGDONG_SEND_TOKEN: ${DINGDONG_SEND_TOKEN:?Set sending token}
+      DINGDONG_READ_TOKEN: ${DINGDONG_READ_TOKEN:?Set receiving token}
+    volumes:
+      - messages:/app/data
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "2"
+volumes:
+  messages:

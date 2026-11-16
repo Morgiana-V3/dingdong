@@ -1,0 +1,7 @@
+{
+  "title": "帖子汇总 · 模拟数据",
+  "items": [
+    {"author": "示例作者", "handle": "@example", "text": "这里放采集到的帖子正文。此文件仅为模板输入示例。", "url": "https://example.com/"},
+    {"author": "示例作者二", "handle": "@example_two", "text": "需要配图时，在条目中添加 image 字段，路径相对于生成后的 HTML 文件。"}
+  ]
+}
