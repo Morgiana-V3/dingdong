@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/services.dart';
 
 class InboxMessage {
@@ -39,6 +40,28 @@ class InboxMessage {
 class InboxRepository {
   static const channel = MethodChannel('dingdong/inbox');
 
+  Future<Map<String, dynamic>> subscriptions([
+    Map<String, dynamic>? command,
+  ]) async {
+    final response = await channel.invokeMethod<String>('subscriptions', {
+      if (command != null) 'command': jsonEncode(command),
+    });
+    return jsonDecode(response!) as Map<String, dynamic>;
+  }
+
+  Future<bool> openExternalLink(String address) async =>
+      await channel.invokeMethod<bool>('openExternalLink', {
+        'address': address,
+      }) ??
+      false;
+
+  Future<Map<String, dynamic>> studio([Map<String, dynamic>? command]) async {
+    final response = await channel.invokeMethod<String>('studio', {
+      if (command != null) 'command': jsonEncode(command),
+    });
+    return jsonDecode(response!) as Map<String, dynamic>;
+  }
+
   Future<List<InboxMessage>> messages({
     String query = '',
     DateTime? after,
@@ -76,10 +99,15 @@ class InboxRepository {
     await channel.invokeMethod('mute', {'source': source, 'enabled': enabled});
   }
 
-  Future<void> connect(String endpoint, String token) async {
+  Future<void> connect(
+    String endpoint,
+    String token, {
+    bool? directConnection,
+  }) async {
     await channel.invokeMethod('connect', {
       'endpoint': endpoint,
       'token': token,
+      'directConnection': ?directConnection,
     });
   }
 

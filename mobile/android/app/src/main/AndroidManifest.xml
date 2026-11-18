@@ -12,6 +12,9 @@
         android:usesCleartextTraffic="true"
         android:name="${applicationName}"
         android:icon="@drawable/ic_launcher_dingdong">
+        <activity android:name=".PlatformLoginActivity" android:exported="false"
+            android:process=":platform_login" android:theme="@android:style/Theme.Material.Light.NoActionBar"
+            android:windowSoftInputMode="adjustResize" />
         <receiver android:name=".StartupReceiver" android:exported="false">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />

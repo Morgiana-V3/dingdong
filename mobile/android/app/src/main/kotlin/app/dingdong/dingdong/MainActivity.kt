@@ -22,7 +22,9 @@ class MainActivity : FlutterActivity() {
     private lateinit var store: InboxStore
     private lateinit var settings: ConnectionSettings
     private val worker = Executors.newSingleThreadScheduledExecutor()
+    private val studioWorker = Executors.newSingleThreadExecutor()
     private var documentResult: MethodChannel.Result? = null
+    private var platformLoginResult: MethodChannel.Result? = null
     private var imageToSave: ByteArray? = null
     private var readerFrames: ReaderFrameBridge? = null
 
@@ -34,8 +36,80 @@ class MainActivity : FlutterActivity() {
         channel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "dingdong/inbox")
         channel.setMethodCallHandler { call, result ->
             when (call.method) {
+                "platformLogin" -> {
+                    if (platformLoginResult != null) {
+                        result.error("login", "登录窗口已打开", null)
+                    } else {
+                        platformLoginResult = result
+                        studioWorker.execute {
+                            try {
+                                val platform = call.argument<String>("platform") ?: "bilibili"
+                                val pairing = org.json.JSONObject(PlatformAccounts.request(this, settings, "pair", platform = platform))
+                                runOnUiThread {
+                                    startActivityForResult(Intent(this, PlatformLoginActivity::class.java).apply {
+                                        putExtra("platform", platform)
+                                        putExtra("endpoint", pairing.getString("endpoint"))
+                                        putExtra("code", pairing.getString("code"))
+                                        putExtra("directConnection", settings.directConnection)
+                                    }, 30)
+                                }
+                            } catch (error: Exception) {
+                                runOnUiThread {
+                                    platformLoginResult = null
+                                    result.error("login", error.message ?: "无法连接账号服务", null)
+                                }
+                            }
+                        }
+                    }
+                }
+                "subscriptions", "platformAccounts" -> studioWorker.execute {
+                    try {
+                        val response = PlatformAccounts.request(this, settings,
+                            if (call.method == "subscriptions") "subscriptions" else call.argument<String>("action") ?: "status",
+                            call.argument<String>("command"), call.argument<String>("platform") ?: "bilibili")
+                        runOnUiThread { result.success(response) }
+                    } catch (error: Exception) {
+                        runOnUiThread { result.error("accounts", error.message ?: "无法读取账号状态", null) }
+                    }
+                }
+                "showSavedToken" -> {
+                    try {
+                        val secret = settings.token()
+                        require(secret.isNotEmpty()) { "尚未保存接收密钥" }
+                        val view = android.widget.TextView(this).apply {
+                            text = secret
+                            setPadding(48, 24, 48, 24)
+                            setTextIsSelectable(true)
+                        }
+                        val dialog = AppDialogs.builder(this)
+                            .setTitle("已保存的接收密钥").setView(view)
+                            .setPositiveButton("隐藏并关闭", null).create()
+                        dialog.window?.addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)
+                        dialog.setOnDismissListener { view.text = "" }
+                        dialog.show()
+                        result.success(null)
+                    } catch (_: Exception) {
+                        result.error("credential", "无法读取已保存的密钥", null)
+                    }
+                }
+                "openExternalLink" -> {
+                    try {
+                        result.success(ExternalLinks.open(this, call.argument<String>("address") ?: ""))
+                    } catch (_: IllegalArgumentException) {
+                        result.error("link", "链接格式不受支持", null)
+                    }
+                }
+                "studio" -> studioWorker.execute {
+                    try {
+                        val response = StudioControl.request(this, settings, call.argument<String>("command"))
+                        runOnUiThread { result.success(response) }
+                    } catch (error: Exception) {
+                        runOnUiThread { result.error("studio", error.message ?: "无法读取订阅设置", null) }
+                    }
+                }
                 "settings" -> result.success(mapOf(
                     "endpoint" to settings.endpoint,
+                    "directConnection" to settings.directConnection,
                     "hasToken" to settings.endpoint.isNotEmpty(),
                     "enabled" to settings.enabled,
                     "status" to if (ReceiverService.running) settings.status else if (settings.enabled) "接收服务未运行" else "已暂停接收",
@@ -47,9 +121,10 @@ class MainActivity : FlutterActivity() {
                     try {
                         val endpoint = call.argument<String>("endpoint")!!.trim()
                         val suppliedToken = call.argument<String>("token")!!.trim()
-                        require(endpoint == settings.endpoint || suppliedToken.isNotEmpty())
+                        require(endpoint == settings.endpoint || RelayEndpoint.isHttpsUpgrade(settings.endpoint, endpoint) || suppliedToken.isNotEmpty())
                         val token = suppliedToken.ifEmpty { settings.token() }
                         settings.save(endpoint, token)
+                        call.argument<Boolean>("directConnection")?.let { settings.directConnection = it }
                         settings.enabled = true
                         startForegroundService(Intent(this, ReceiverService::class.java))
                         if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
@@ -110,7 +185,7 @@ class MainActivity : FlutterActivity() {
                         val response: Any? = when (call.method) {
                             "list" -> store.list(call.argument<String>("query") ?: "",
                                 call.argument<Number>("after")?.toLong(), call.argument<Number>("before")?.toLong())
-                            "diagnose" -> ConnectionDiagnostic.check(settings)
+                            "diagnose" -> ConnectionDiagnostic.check(this, settings)
                             "batch" -> {
                                 val ids = call.argument<List<String>>("ids")!!
                                 val action = call.argument<String>("action")!!
@@ -217,6 +292,14 @@ class MainActivity : FlutterActivity() {
     @Deprecated("Used for Android document picker compatibility")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == 30) {
+            val pending = platformLoginResult
+            platformLoginResult = null
+            val error = data?.getStringExtra("error")
+            if (error != null) pending?.error("login", error, null)
+            else pending?.success(data?.getStringExtra("message"))
+            return
+        }
         if (requestCode !in 20..22) return
         val result = documentResult ?: return
         documentResult = null

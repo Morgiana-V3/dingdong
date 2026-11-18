@@ -2,7 +2,7 @@ FROM public.ecr.aws/docker/library/python:3.13-slim@sha256:e48f59cdba69a3cbd9ed2
 WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-COPY app.py .
+COPY app.py studio.py ./
 RUN useradd --uid 10001 --create-home dingdong && mkdir /app/data && chown dingdong /app/data
 USER dingdong
 EXPOSE 8080

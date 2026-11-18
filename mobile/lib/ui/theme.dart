@@ -9,6 +9,12 @@ ThemeData inboxTheme(Brightness brightness) {
         primary: dark ? const Color(0xFFFFAD95) : accent,
         surface: dark ? const Color(0xFF181A1D) : const Color(0xFFFAFAF8),
       );
+  final fieldShape = BorderRadius.circular(14);
+  OutlineInputBorder fieldBorder(Color color, [double width = 1]) =>
+      OutlineInputBorder(
+        borderRadius: fieldShape,
+        borderSide: BorderSide(color: color, width: width),
+      );
   return ThemeData(
     useMaterial3: true,
     colorScheme: scheme,
@@ -31,11 +37,63 @@ ThemeData inboxTheme(Brightness brightness) {
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
       fillColor: dark ? const Color(0xFF22252A) : const Color(0xFFF0F1EE),
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide.none,
+      border: fieldBorder(Colors.transparent),
+      enabledBorder: fieldBorder(scheme.outlineVariant.withValues(alpha: .45)),
+      disabledBorder: fieldBorder(Colors.transparent),
+      focusedBorder: fieldBorder(scheme.primary, 1.5),
+      errorBorder: fieldBorder(scheme.error),
+      focusedErrorBorder: fieldBorder(scheme.error, 1.5),
+      labelStyle: TextStyle(color: scheme.onSurfaceVariant, fontSize: 14),
+      hintStyle: TextStyle(
+        color: scheme.onSurfaceVariant.withValues(alpha: .65),
+        fontSize: 14,
       ),
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+      helperStyle: TextStyle(color: scheme.onSurfaceVariant, height: 1.4),
+      errorMaxLines: 3,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 17),
+    ),
+    cardTheme: CardThemeData(
+      elevation: 0,
+      margin: EdgeInsets.zero,
+      color: scheme.surfaceContainerLow,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+    ),
+    dialogTheme: DialogThemeData(
+      backgroundColor: scheme.surface,
+      surfaceTintColor: Colors.transparent,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+    ),
+    bottomSheetTheme: BottomSheetThemeData(
+      backgroundColor: scheme.surface,
+      surfaceTintColor: Colors.transparent,
+      showDragHandle: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+    ),
+    dropdownMenuTheme: DropdownMenuThemeData(
+      menuStyle: MenuStyle(
+        backgroundColor: WidgetStatePropertyAll(scheme.surfaceContainer),
+        shape: WidgetStatePropertyAll(
+          RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        ),
+      ),
+    ),
+    datePickerTheme: DatePickerThemeData(
+      backgroundColor: scheme.surface,
+      surfaceTintColor: Colors.transparent,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+    ),
+    timePickerTheme: TimePickerThemeData(
+      backgroundColor: scheme.surface,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+    ),
+    outlinedButtonTheme: OutlinedButtonThemeData(
+      style: OutlinedButton.styleFrom(
+        minimumSize: const Size(48, 48),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        side: BorderSide(color: scheme.outlineVariant),
+      ),
     ),
     navigationBarTheme: NavigationBarThemeData(
       backgroundColor: scheme.surface,
@@ -52,9 +110,20 @@ ThemeData inboxTheme(Brightness brightness) {
       ),
     ),
     chipTheme: ChipThemeData(
+      labelStyle: TextStyle(
+        color: scheme.onSurface,
+        fontWeight: FontWeight.w700,
+      ),
       side: BorderSide.none,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       selectedColor: scheme.primary.withValues(alpha: .12),
+    ),
+    tabBarTheme: const TabBarThemeData(
+      labelStyle: TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+      unselectedLabelStyle: TextStyle(
+        fontSize: 14,
+        fontWeight: FontWeight.w700,
+      ),
     ),
   );
 }

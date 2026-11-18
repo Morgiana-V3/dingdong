@@ -9,6 +9,8 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.net.ConnectivityManager
 import android.net.Network
+import android.net.NetworkCapabilities
+import android.net.NetworkRequest
 import android.net.Uri
 import android.os.Build
 import android.os.IBinder
@@ -34,9 +36,7 @@ class ReceiverService : Service() {
     private lateinit var settings: ConnectionSettings
     private lateinit var store: InboxStore
     private val executor = Executors.newSingleThreadScheduledExecutor()
-    private val client = OkHttpClient.Builder().pingInterval(25, TimeUnit.SECONDS)
-        .connectTimeout(15, TimeUnit.SECONDS).readTimeout(40, TimeUnit.SECONDS)
-        .callTimeout(45, TimeUnit.SECONDS).followRedirects(false).followSslRedirects(false).build()
+    private var client: OkHttpClient? = null
     private var socket: WebSocket? = null
     private var retry: ScheduledFuture<*>? = null
     private var attempts = 0
@@ -51,8 +51,18 @@ class ReceiverService : Service() {
             submit {
                 if (getSystemService(ConnectivityManager::class.java).activeNetwork == null) {
                     updateStatus("网络不可用，等待网络恢复")
+                } else {
+                    connect()
                 }
             }
+        }
+    }
+    private val directNetworkCallback = object : ConnectivityManager.NetworkCallback() {
+        override fun onAvailable(network: Network) {
+            if (settings.directConnection) submit { connect() }
+        }
+        override fun onLost(network: Network) {
+            if (settings.directConnection) submit { connect() }
         }
     }
 
@@ -71,6 +81,9 @@ class ReceiverService : Service() {
             startForeground(CONNECTION_ID, notification)
         }
         getSystemService(ConnectivityManager::class.java).registerDefaultNetworkCallback(networkCallback)
+        getSystemService(ConnectivityManager::class.java).registerNetworkCallback(
+            NetworkRequest.Builder().addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                .addCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN).build(), directNetworkCallback)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -95,6 +108,7 @@ class ReceiverService : Service() {
         val connectionGeneration = generation
         socket?.cancel()
         socket = null
+        closeClient()
         if (!settings.enabled || settings.endpoint.isEmpty()) {
             stopSelf()
             return
@@ -102,10 +116,17 @@ class ReceiverService : Service() {
         updateStatus("正在连接")
         try {
             val endpoint = settings.endpoint
+            val namespace = settings.messageNamespace
             val token = settings.token()
+            // Rebuild after reconnect/network changes so old proxy routes and pooled sockets
+            // cannot survive switching a VPN, Wi-Fi network or the relay connection mode.
+            val connectionClient = RelayNetwork.builder(this, settings.directConnection)
+                .pingInterval(25, TimeUnit.SECONDS).connectTimeout(15, TimeUnit.SECONDS)
+                .readTimeout(40, TimeUnit.SECONDS).callTimeout(45, TimeUnit.SECONDS).build()
+            client = connectionClient
             val streamUrl = endpoint.replaceFirst("http", "ws") + "/v1/stream"
             val request = Request.Builder().url(streamUrl).header("Authorization", "Bearer $token").build()
-            socket = client.newWebSocket(request, object : WebSocketListener() {
+            socket = connectionClient.newWebSocket(request, object : WebSocketListener() {
                 override fun onOpen(webSocket: WebSocket, response: Response) {
                     submit {
                         if (connectionGeneration == generation) {
@@ -120,7 +141,7 @@ class ReceiverService : Service() {
                 override fun onMessage(webSocket: WebSocket, text: String) {
                     submit {
                         if (connectionGeneration == generation) {
-                            receive(text, endpoint, token)
+                            receive(text, endpoint, token, connectionClient, namespace)
                         }
                     }
                 }
@@ -128,7 +149,8 @@ class ReceiverService : Service() {
                 override fun onFailure(webSocket: WebSocket, error: Throwable, response: Response?) {
                     submit {
                         if (connectionGeneration == generation) {
-                            val failure = ConnectionDiagnostic.failure(error, response?.code)
+                            val failure = ConnectionDiagnostic.failure(error, response?.code, webSocket = true) +
+                                if (settings.directConnection) "（服务器直连；若被 VPN 阻止，请在代理中放行叮咚）" else ""
                             if (response?.code in listOf(401, 403)) {
                                 settings.retryAt = 0
                                 updateStatus(failure)
@@ -158,11 +180,11 @@ class ReceiverService : Service() {
                 }
             })
         } catch (error: Exception) {
-            reconnect("无法连接，请检查服务器配置")
+            reconnect(if (settings.directConnection) "无法直连服务器，请检查 Wi-Fi/移动网络及 VPN 的绕过限制" else "无法连接，请检查服务器配置")
         }
     }
 
-    private fun receive(text: String, endpoint: String, token: String) {
+    private fun receive(text: String, endpoint: String, token: String, client: OkHttpClient, namespace: String) {
         try {
             val event = JSONObject(text)
             val ids = event.optJSONArray("ids") ?: return
@@ -181,7 +203,7 @@ class ReceiverService : Service() {
                     }
                     check(response.isSuccessful)
                     val message = JSONObject(response.body!!.string())
-                    val (localId, inserted) = store.save(message, endpoint)
+                    val (localId, inserted) = store.save(message, namespace)
                     if (inserted && message.optString("priority") != "silent" &&
                         !store.mutedSources().contains(message.getString("source"))) {
                         notifyMessage(message, localId)
@@ -246,11 +268,21 @@ class ReceiverService : Service() {
         settings.retryAt = 0
         retry?.cancel(false)
         socket?.cancel()
-        client.dispatcher.cancelAll()
+        closeClient()
         getSystemService(ConnectivityManager::class.java).unregisterNetworkCallback(networkCallback)
+        getSystemService(ConnectivityManager::class.java).unregisterNetworkCallback(directNetworkCallback)
         executor.shutdown()
         super.onDestroy()
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
+
+    private fun closeClient() {
+        client?.let {
+            it.dispatcher.cancelAll()
+            it.connectionPool.evictAll()
+            it.dispatcher.executorService.shutdown()
+        }
+        client = null
+    }
 }

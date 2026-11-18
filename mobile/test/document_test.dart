@@ -5,6 +5,37 @@ import 'package:html/parser.dart';
 
 void main() {
   test(
+    'external app and blank-target links remain interceptable without active intents',
+    () {
+      final document = parse(
+        buildDocument(
+          '<a target="_blank" href="com.baidu.tieba://unidispatch/pb?tid=12345">贴吧</a>'
+              '<a target="_blank" href="twitter://status?id=2120694045299327187">X</a>'
+              '<a href="//x.com/i/status/20">网页</a>'
+              '<a href="intent://x/#Intent;component=evil;end">意图</a>'
+              '<a href="javascript:alert(1)">脚本</a><a href="file:///secret">文件</a>',
+          'html',
+          dark: false,
+        ),
+      );
+      final links = document.querySelectorAll('a');
+      expect(
+        links[0].attributes['href'],
+        'com.baidu.tieba://unidispatch/pb?tid=12345',
+      );
+      expect(
+        links[1].attributes['href'],
+        'twitter://status?id=2120694045299327187',
+      );
+      expect(links[2].attributes['href'], 'https://x.com/i/status/20');
+      expect(document.querySelectorAll('a[target]'), isEmpty);
+      expect(
+        links.skip(3).every((link) => !link.attributes.containsKey('href')),
+        isTrue,
+      );
+    },
+  );
+  test(
     'original HTML preserves CSS but removes scripts and refresh navigation',
     () {
       final result = parse(

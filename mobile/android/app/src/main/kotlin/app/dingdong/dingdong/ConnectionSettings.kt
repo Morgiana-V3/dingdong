@@ -23,6 +23,11 @@ class ConnectionSettings(context: Context) {
         set(value) { preferences.edit().putString("status", value).apply() }
 
     val endpoint: String get() = preferences.getString("endpoint", "")!!
+    val messageNamespace: String get() = preferences.getString("messageNamespace", endpoint)!!
+
+    var directConnection: Boolean
+        get() = preferences.getBoolean("directConnection", false)
+        set(value) { preferences.edit().putBoolean("directConnection", value).apply() }
 
     var lastConnectedAt: Long
         get() = preferences.getLong("lastConnectedAt", 0)
@@ -38,11 +43,14 @@ class ConnectionSettings(context: Context) {
         require(address.userInfo == null && address.query == null && address.fragment == null)
         require(address.path.isNullOrEmpty() || address.path == "/")
         require(token.length >= 32)
+        val next = endpoint.trimEnd('/')
+        val namespace = RelayEndpoint.messageNamespace(this.endpoint, next, messageNamespace)
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(Cipher.ENCRYPT_MODE, key())
         val encrypted = cipher.doFinal(token.toByteArray(Charsets.UTF_8))
         check(preferences.edit()
-            .putString("endpoint", endpoint.trimEnd('/'))
+            .putString("endpoint", next)
+            .putString("messageNamespace", namespace)
             .putString("token", Base64.encodeToString(encrypted, Base64.NO_WRAP))
             .putString("iv", Base64.encodeToString(cipher.iv, Base64.NO_WRAP))
             .commit())

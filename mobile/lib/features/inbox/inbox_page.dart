@@ -1,3 +1,4 @@
+import '../../ui/selection_sheet.dart';
 import 'dart:async';
 import 'dart:ui' as ui;
 import 'package:animations/animations.dart';
@@ -9,6 +10,7 @@ import '../../ui/content_route.dart';
 import '../../ui/theme.dart';
 import '../reader/reader_page.dart';
 import '../settings/settings_page.dart';
+import '../studio/subscription_management_page.dart';
 import 'message_tile.dart';
 
 class InboxPage extends StatefulWidget {
@@ -238,7 +240,7 @@ class _InboxPageState extends State<InboxPage> with WidgetsBindingObserver {
   }
 
   Future<void> _pickDates() async {
-    final range = await showDateRangePicker(
+    final range = await showDateRangeSheet(
       context: context,
       firstDate: DateTime(2000),
       lastDate: DateTime.now().add(const Duration(days: 365)),
@@ -305,9 +307,9 @@ class _InboxPageState extends State<InboxPage> with WidgetsBindingObserver {
     final ids = targets ?? selectedIds.toList();
     if (ids.isEmpty || acting) return;
     if (action == 'delete') {
-      final confirmed = await showDialog<bool>(
+      final confirmed = await showAppSheet<bool>(
         context: context,
-        builder: (context) => AlertDialog(
+        builder: (context) => SheetDialog(
           title: Text('删除 ${ids.length} 条消息？'),
           content: const Text('删除后可短暂撤销。已送达的正文不能从服务器重新下载。'),
           actions: [
@@ -348,6 +350,7 @@ class _InboxPageState extends State<InboxPage> with WidgetsBindingObserver {
       int target, {
       int messageFilter = 0,
       int? count,
+      Widget? trailing,
     }) {
       final selected =
           page == target &&
@@ -360,13 +363,13 @@ class _InboxPageState extends State<InboxPage> with WidgetsBindingObserver {
           ),
           selected: selected,
           selectedColor: colors.primary,
-          selectedTileColor: colors.primary.withValues(alpha: .10),
+          selectedTileColor: Colors.transparent,
           leading: Icon(icon, size: 22),
           title: Text(
             label,
             style: const TextStyle(fontWeight: FontWeight.w600),
           ),
-          trailing: count == null ? null : Text('$count'),
+          trailing: trailing ?? (count == null ? null : Text('$count')),
           onTap: () => _navigate(target, messageFilter: messageFilter),
         ),
       );
@@ -412,17 +415,28 @@ class _InboxPageState extends State<InboxPage> with WidgetsBindingObserver {
                     child: Divider(height: 1),
                   ),
                   destination('来源', Icons.grid_view_outlined, 1),
+                  ListTile(
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 28),
+                    leading: const Icon(Icons.subscriptions_outlined),
+                    title: const Text(
+                      '订阅管理',
+                      style: TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                    onTap: () {
+                      Navigator.pop(context);
+                      Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => SubscriptionManagementPage(
+                            repository: widget.repository,
+                          ),
+                        ),
+                      );
+                    },
+                  ),
                 ],
               ),
             ),
             destination('设置', Icons.tune_rounded, 2),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(28, 6, 24, 12),
-              child: Text(
-                settings['status'] as String? ?? '未连接',
-                style: TextStyle(fontSize: 12, color: colors.onSurfaceVariant),
-              ),
-            ),
             const SizedBox(height: 12),
           ],
         ),
@@ -480,7 +494,7 @@ class _InboxPageState extends State<InboxPage> with WidgetsBindingObserver {
                   ),
                 ),
               if (page == 0 && selectedIds.isEmpty)
-                PopupMenuButton<String>(
+                SheetMenuButton<String>(
                   tooltip: '消息操作',
                   onSelected: (_) => _batch(
                     'read',
@@ -488,8 +502,12 @@ class _InboxPageState extends State<InboxPage> with WidgetsBindingObserver {
                         .map((message) => message.id)
                         .toList(),
                   ),
-                  itemBuilder: (_) => [
-                    const PopupMenuItem(value: 'read', child: Text('当前列表全部已读')),
+                  choices: [
+                    const SheetChoice(
+                      value: 'read',
+                      label: '当前列表全部已读',
+                      icon: Icons.done_all,
+                    ),
                   ],
                 ),
             ],

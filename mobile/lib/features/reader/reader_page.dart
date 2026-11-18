@@ -1,6 +1,6 @@
+import '../../ui/selection_sheet.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import '../../data/inbox_repository.dart';
 import '../../ui/content_route.dart';
@@ -8,6 +8,7 @@ import '../../ui/theme.dart';
 import 'reader_frame.dart';
 import 'document.dart';
 import 'image_viewer.dart';
+import 'external_link.dart';
 
 class ReaderPage extends StatefulWidget {
   const ReaderPage({
@@ -38,6 +39,7 @@ class _ReaderPageState extends State<ReaderPage> {
   bool openingImage = false;
   bool preparingImage = false;
   bool documentRequested = false;
+  bool openingLink = false;
 
   @override
   void initState() {
@@ -63,9 +65,9 @@ class _ReaderPageState extends State<ReaderPage> {
               }
               return NavigationDecision.prevent;
             }
-            if (uri != null &&
-                ['http', 'https', 'mailto'].contains(uri.scheme)) {
-              _openLink(uri);
+            final link = externalLink(request.url);
+            if (link != null && request.isMainFrame) {
+              _openLink(link);
             }
             return NavigationDecision.prevent;
           },
@@ -174,33 +176,42 @@ class _ReaderPageState extends State<ReaderPage> {
   }
 
   Future<void> _openLink(Uri uri) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('打开外部链接'),
-        content: Text(uri.toString()),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('打开'),
-          ),
-        ],
-      ),
-    );
-    if (confirmed == true) {
-      try {
-        final opened = await launchUrl(
-          uri,
-          mode: LaunchMode.externalApplication,
-        );
-        if (!opened && mounted) setState(() => error = '没有可打开此链接的应用');
-      } catch (_) {
-        if (mounted) setState(() => error = '无法打开链接');
+    if (openingLink ||
+        !mounted ||
+        !(ModalRoute.of(context)?.isCurrent ?? false)) {
+      return;
+    }
+    openingLink = true;
+    try {
+      final confirmed = await showAppSheet<bool>(
+        context: context,
+        builder: (context) => SheetDialog(
+          title: const Text('打开外部链接'),
+          content: Text(uri.toString()),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('打开'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed == true) {
+        try {
+          final opened = await widget.repository.openExternalLink(
+            uri.toString(),
+          );
+          if (!opened && mounted) setState(() => error = '没有可打开此链接的应用');
+        } catch (_) {
+          if (mounted) setState(() => error = '无法打开链接');
+        }
       }
+    } finally {
+      openingLink = false;
     }
   }
 
@@ -233,9 +244,9 @@ class _ReaderPageState extends State<ReaderPage> {
   Future<void> _action(String action) async {
     try {
       if (action == 'delete') {
-        final confirmed = await showDialog<bool>(
+        final confirmed = await showAppSheet<bool>(
           context: context,
-          builder: (context) => AlertDialog(
+          builder: (context) => SheetDialog(
             title: const Text('删除这条消息？'),
             content: const Text('消息将从手机移除。服务器已确认送达的正文不会重新下载。'),
             actions: [
@@ -308,7 +319,7 @@ class _ReaderPageState extends State<ReaderPage> {
       toolbarHeight: 48,
       leading: BackButton(onPressed: () => Navigator.pop(context)),
       actions: [
-        PopupMenuButton<String>(
+        SheetMenuButton<String>(
           tooltip: '更多',
           onSelected: (action) {
             if (action == 'info') {
@@ -317,14 +328,27 @@ class _ReaderPageState extends State<ReaderPage> {
               _action(action);
             }
           },
-          itemBuilder: (_) => [
-            const PopupMenuItem(value: 'info', child: Text('消息信息')),
-            PopupMenuItem(
-              value: 'starred',
-              child: Text(starred ? '取消收藏' : '收藏'),
+          choices: [
+            const SheetChoice(
+              value: 'info',
+              label: '消息信息',
+              icon: Icons.info_outline,
             ),
-            const PopupMenuItem(value: 'read', child: Text('标为未读')),
-            const PopupMenuItem(value: 'delete', child: Text('删除消息')),
+            SheetChoice(
+              value: 'starred',
+              label: starred ? '取消收藏' : '收藏',
+              icon: Icons.star_outline,
+            ),
+            const SheetChoice(
+              value: 'read',
+              label: '标为未读',
+              icon: Icons.mark_email_unread_outlined,
+            ),
+            const SheetChoice(
+              value: 'delete',
+              label: '删除消息',
+              icon: Icons.delete_outline,
+            ),
           ],
         ),
       ],

@@ -1,5 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <style name="DingdongSheetAnimation">
+        <item name="android:windowEnterAnimation">@anim/sheet_enter</item>
+        <item name="android:windowExitAnimation">@anim/sheet_exit</item>
+    </style>
+    <style name="DingdongDialogTheme" parent="@android:style/Theme.Material.Light.Dialog.Alert">
+        <item name="android:colorAccent">#E36547</item>
+        <item name="android:fontFamily">sans</item>
+        <item name="android:textColorPrimary">#262624</item>
+        <item name="android:windowBackground">@drawable/dialog_surface</item>
+        <item name="android:buttonBarButtonStyle">@style/DingdongDialogButton</item>
+    </style>
+    <style name="DingdongDialogButton" parent="@android:style/Widget.Material.Light.Button.Borderless">
+        <item name="android:textAllCaps">false</item>
+        <item name="android:textColor">#C84D33</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+    </style>
     <!-- Theme applied to the Android Window while the process is starting when the OS's Dark Mode setting is off -->
     <style name="LaunchTheme" parent="@android:style/Theme.Light.NoTitleBar">
         <!-- Show a splash screen on the activity. Automatically removed when

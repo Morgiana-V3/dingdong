@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:html/parser.dart' as html;
 import 'package:html/dom.dart';
 import 'package:markdown/markdown.dart' as markdown;
+import 'external_link.dart';
 
 String buildDocument(
   String content,
@@ -21,6 +22,21 @@ String buildDocument(
     source = '<pre>${const HtmlEscape().convert(content)}</pre>';
   }
   final document = html.parse(source);
+  for (final anchor in document.querySelectorAll('a')) {
+    // Keep all clicks in the existing WebView so navigation is intercepted even
+    // for target=_blank links. App/intent handling never executes page scripts.
+    anchor.attributes.remove('target');
+    anchor.attributes.remove('download');
+    final address = anchor.attributes['href'];
+    if (address != null && !address.startsWith('#')) {
+      final link = externalLink(address);
+      if (link == null) {
+        anchor.attributes.remove('href');
+      } else {
+        anchor.attributes['href'] = link.toString();
+      }
+    }
+  }
   for (final element in document.querySelectorAll(
     'script, iframe, object, embed, base, link, meta[http-equiv]',
   )) {

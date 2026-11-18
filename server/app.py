@@ -13,6 +13,7 @@ from typing import Literal
 
 from fastapi import FastAPI, Header, HTTPException, Request, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, Field, field_validator
+from studio import install_studio_routes
 
 
 class MessageInput(BaseModel):
@@ -142,6 +143,8 @@ def create_app(database_path=None, send_token=None, read_token=None):
     def authorize(header, expected):
         if not hmac.compare_digest(header or "", f"Bearer {expected}"):
             raise HTTPException(401, "Invalid credential")
+
+    install_studio_routes(app, authorize, send_token, read_token)
 
     @app.middleware("http")
     async def limit_body(request: Request, call_next):
