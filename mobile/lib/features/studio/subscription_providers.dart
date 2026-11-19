@@ -1,3 +1,4 @@
+import '../../ui/theme.dart';
 import '../../ui/selection_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -161,8 +162,12 @@ class _ServerConfigurationPageState extends State<ServerConfigurationPage> {
                 icon: const Icon(Icons.help_outline_rounded),
               ),
             ],
-            bottom: const TabBar(
-              tabs: [
+            bottom: TabBar(
+              isScrollable: MediaQuery.textScalerOf(context).scale(14) > 20,
+              tabAlignment: MediaQuery.textScalerOf(context).scale(14) > 20
+                  ? TabAlignment.center
+                  : TabAlignment.fill,
+              tabs: const [
                 Tab(text: 'AI 服务'),
                 Tab(text: '任务关联'),
                 Tab(text: '插件'),
@@ -173,7 +178,7 @@ class _ServerConfigurationPageState extends State<ServerConfigurationPage> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Padding(
-                padding: const EdgeInsets.fromLTRB(14, 10, 14, 6),
+                padding: pageInsets(context, top: 10, bottom: 6),
                 child: Text(
                   snapshot['endpoint'] as String? ?? '当前叮咚服务器',
                   maxLines: 1,
@@ -200,7 +205,7 @@ class _ServerConfigurationPageState extends State<ServerConfigurationPage> {
                 child: TabBarView(
                   children: [
                     ListView(
-                      padding: const EdgeInsets.fromLTRB(14, 4, 14, 20),
+                      padding: pageInsets(context, top: 4),
                       children: [
                         Row(
                           children: [
@@ -265,7 +270,7 @@ class _ServerConfigurationPageState extends State<ServerConfigurationPage> {
                       ],
                     ),
                     ListView(
-                      padding: const EdgeInsets.fromLTRB(14, 10, 14, 20),
+                      padding: pageInsets(context, top: 10),
                       children: [
                         const Padding(
                           padding: EdgeInsets.only(bottom: 12),
@@ -282,6 +287,9 @@ class _ServerConfigurationPageState extends State<ServerConfigurationPage> {
                             padding: const EdgeInsets.only(bottom: 8),
                             child: Card(
                               child: ListTile(
+                                onTap: busy || providers.isEmpty
+                                    ? null
+                                    : () => assign(task),
                                 title: Text(task['name'] as String),
                                 subtitle: Text(
                                   providers
@@ -294,19 +302,16 @@ class _ServerConfigurationPageState extends State<ServerConfigurationPage> {
                                           as String? ??
                                       '等待 AI 配置',
                                 ),
-                                trailing: TextButton(
-                                  onPressed: busy || providers.isEmpty
-                                      ? null
-                                      : () => assign(task),
-                                  child: const Text('选择 AI 配置'),
-                                ),
+                                trailing: providers.isEmpty
+                                    ? null
+                                    : const Icon(Icons.chevron_right),
                               ),
                             ),
                           ),
                       ],
                     ),
                     ListView(
-                      padding: const EdgeInsets.fromLTRB(14, 10, 14, 20),
+                      padding: pageInsets(context, top: 10),
                       children: [
                         for (final plugin in plugins)
                           Padding(
@@ -470,7 +475,7 @@ class _ProviderEditorState extends State<_ProviderEditor> {
           child: AbsorbPointer(
             absorbing: busy,
             child: ListView(
-              padding: const EdgeInsets.all(14),
+              padding: pageInsets(context),
               children: [
                 if (busy) const LinearProgressIndicator(),
                 if (error != null)
@@ -554,7 +559,7 @@ class _ProviderEditorState extends State<_ProviderEditor> {
                 const Padding(
                   padding: EdgeInsets.only(top: 6, bottom: 12),
                   child: Text(
-                    '从厂商实时读取模型，可搜索名称。请选择支持工具调用的文本模型。',
+                    '请选择支持工具调用的文本模型。',
                     style: TextStyle(fontSize: 12),
                   ),
                 ),
@@ -572,8 +577,7 @@ class _ProviderEditorState extends State<_ProviderEditor> {
                   onChanged: (value) => setState(() => limit.text = value),
                 ),
                 const SizedBox(height: 12),
-                ExpansionTile(
-                  tilePadding: EdgeInsets.zero,
+                SettingsExpansion(
                   title: const Text('高级设置'),
                   children: [
                     TextFormField(
@@ -631,46 +635,59 @@ class _ModelPickerState extends State<_ModelPicker> {
       height: MediaQuery.sizeOf(context).height * .65,
       child: Padding(
         padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-        child: Column(
-          children: [
-            Row(
-              children: [
-                const Expanded(
-                  child: Text(
-                    '选择模型',
-                    style: TextStyle(fontWeight: FontWeight.w700, fontSize: 17),
-                  ),
-                ),
-                IconButton(
-                  tooltip: '关闭面板',
-                  onPressed: () => Navigator.pop(context),
-                  icon: const Icon(Icons.close),
-                ),
-              ],
-            ),
-            TextField(
-              autocorrect: false,
-              decoration: const InputDecoration(
-                hintText: '搜索模型',
-                prefixIcon: Icon(Icons.search),
-              ),
-              onChanged: (value) => setState(() => query = value.trim()),
-            ),
-            const SizedBox(height: 8),
-            Expanded(
-              child: items.isEmpty
-                  ? const Center(child: Text('没有匹配的模型'))
-                  : ListView.builder(
-                      itemCount: items.length,
-                      itemBuilder: (context, index) => ListTile(
-                        title: Text(
-                          items[index],
-                          style: const TextStyle(fontSize: 13),
-                        ),
-                        onTap: () => Navigator.pop(context, items[index]),
+        child: CustomScrollView(
+          slivers: [
+            SliverToBoxAdapter(
+              child: Row(
+                children: [
+                  const Expanded(
+                    child: Text(
+                      '选择模型',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 17,
                       ),
                     ),
+                  ),
+                  IconButton(
+                    tooltip: '关闭面板',
+                    onPressed: () => Navigator.pop(context),
+                    icon: const Icon(Icons.close),
+                  ),
+                ],
+              ),
             ),
+            PinnedHeaderSliver(
+              child: Material(
+                color: Theme.of(context).colorScheme.surface,
+                child: TextField(
+                  autocorrect: false,
+                  decoration: const InputDecoration(
+                    hintText: '搜索模型',
+                    prefixIcon: Icon(Icons.search),
+                  ),
+                  onChanged: (value) => setState(() => query = value.trim()),
+                ),
+              ),
+            ),
+            if (items.isEmpty)
+              const SliverToBoxAdapter(
+                child: Padding(
+                  padding: EdgeInsets.all(16),
+                  child: Center(child: Text('没有匹配的模型')),
+                ),
+              )
+            else
+              SliverList.builder(
+                itemCount: items.length,
+                itemBuilder: (context, index) => ListTile(
+                  title: Text(
+                    items[index],
+                    style: const TextStyle(fontSize: 13),
+                  ),
+                  onTap: () => Navigator.pop(context, items[index]),
+                ),
+              ),
           ],
         ),
       ),

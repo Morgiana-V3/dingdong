@@ -1,3 +1,4 @@
+import 'package:dingdong/features/accounts/platform_accounts_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:dingdong/data/inbox_repository.dart';
@@ -193,7 +194,13 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('去登录'));
       await tester.pumpAndSettle();
-      expect(find.text('用于 1 个已开启任务'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byType(PlatformAccountsPage),
+          matching: find.text('测试任务'),
+        ),
+        findsOneWidget,
+      );
       await tester.tap(find.text('哔哩哔哩'));
       await tester.pumpAndSettle();
       expect(find.text('登录并启用任务'), findsOneWidget);

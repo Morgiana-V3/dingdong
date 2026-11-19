@@ -35,50 +35,65 @@ class SheetDialog extends StatelessWidget {
   final Widget? content;
   final List<Widget> actions;
   @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-    child: Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.stretch,
+  Widget build(BuildContext context) {
+    final header = Row(
       children: [
-        Row(
-          children: [
-            Expanded(
-              child: DefaultTextStyle.merge(
-                style: const TextStyle(
-                  fontSize: 17,
-                  fontWeight: FontWeight.w700,
-                ),
-                child: title,
-              ),
-            ),
-            IconButton(
-              tooltip: '关闭面板',
-              onPressed: () => Navigator.pop(context),
-              icon: const Icon(Icons.close),
-            ),
-          ],
+        Expanded(
+          child: DefaultTextStyle.merge(
+            style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+            child: title,
+          ),
         ),
-        if (content != null)
-          Flexible(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(vertical: 12),
-              child: content!,
-            ),
-          ),
-        if (actions.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.only(top: 12),
-            child: OverflowBar(
-              spacing: 12,
-              overflowSpacing: 8,
-              alignment: MainAxisAlignment.end,
-              children: actions,
-            ),
-          ),
+        IconButton(
+          tooltip: '关闭面板',
+          onPressed: () => Navigator.pop(context),
+          icon: const Icon(Icons.close),
+        ),
       ],
-    ),
-  );
+    );
+    final body = Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: content,
+    );
+    final footer = OverflowBar(
+      spacing: 8,
+      overflowSpacing: 4,
+      alignment: MainAxisAlignment.end,
+      children: actions,
+    );
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          // Short windows and tall text can leave no room between a fixed title
+          // and stacked actions. Let the entire panel scroll in that case.
+          if (constraints.maxHeight <
+              MediaQuery.textScalerOf(context).scale(200)) {
+            return SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  header,
+                  if (content != null) body,
+                  if (actions.isNotEmpty) footer,
+                ],
+              ),
+            );
+          }
+          return Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              header,
+              if (content != null)
+                Flexible(child: SingleChildScrollView(child: body)),
+              if (actions.isNotEmpty) footer,
+            ],
+          );
+        },
+      ),
+    );
+  }
 }
 
 class SheetChoice<T> {
@@ -121,9 +136,7 @@ Future<T?> showChoiceSheet<T>({
                 borderRadius: BorderRadius.circular(14),
               ),
               selected: choice.value == selected,
-              selectedTileColor: Theme.of(
-                context,
-              ).colorScheme.primaryContainer.withValues(alpha: .35),
+              selectedTileColor: Colors.transparent,
               enabled: choice.enabled,
               leading: choice.icon == null ? null : Icon(choice.icon),
               title: Text(

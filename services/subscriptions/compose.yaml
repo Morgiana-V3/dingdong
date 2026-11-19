@@ -1,0 +1,26 @@
+services:
+  accounts:
+    build:
+      context: .
+      args:
+        DEBIAN_MIRROR: ${DEBIAN_MIRROR:-deb.debian.org}
+    image: ${DINGDONG_NODE_IMAGE:-dingdong-node:0.1.0}
+    restart: unless-stopped
+    network_mode: host
+    env_file: ${DINGDONG_ENV_FILE:-.env}
+    environment:
+      PORT: ${DINGDONG_NODE_PORT:-18890}
+    volumes:
+      - accounts:/app/data
+    init: true
+    stop_grace_period: 2m
+    shm_size: 256mb
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: 5m
+        max-file: '2'
+volumes:
+  accounts:

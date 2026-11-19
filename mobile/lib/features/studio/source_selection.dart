@@ -70,11 +70,9 @@ Future<Set<String>?> selectDigestSources({
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(14),
                       ),
-                      tileColor: checked
-                          ? Theme.of(
-                              context,
-                            ).colorScheme.primaryContainer.withValues(alpha: .3)
-                          : Theme.of(context).colorScheme.surfaceContainerLow,
+                      tileColor: Theme.of(
+                        context,
+                      ).colorScheme.surfaceContainerLow,
                       title: Text(source['name'] as String),
                       subtitle: Text(reason),
                       value: checked,

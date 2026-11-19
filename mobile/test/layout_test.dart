@@ -207,4 +207,70 @@ void main() {
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox());
   });
+
+  testWidgets('first connection opens the server form directly', (
+    tester,
+  ) async {
+    await tester.pumpWidget(const DingdongApp());
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('连接服务器'));
+    await tester.pumpAndSettle();
+    expect(find.widgetWithText(TextFormField, '服务器地址'), findsOneWidget);
+    expect(find.widgetWithText(TextFormField, '接收密钥'), findsOneWidget);
+    expect(find.text('导出本地消息'), findsNothing);
+    await tester.tap(find.byType(BackButton));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('打开菜单'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('设置').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('服务器连接'));
+    await tester.pumpAndSettle();
+    expect(find.widgetWithText(TextFormField, '服务器地址'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets(
+    'empty search can reset and starred selection offers one action',
+    (tester) async {
+      messages = [
+        {
+          'id': 'saved',
+          'source': '测试来源',
+          'title': '收藏的消息',
+          'summary': '测试摘要',
+          'format': 'text',
+          'createdAt': 1794787200000,
+          'read': true,
+          'starred': true,
+        },
+      ];
+      await tester.pumpWidget(const DingdongApp());
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), '不存在的内容');
+      await tester.pumpAndSettle();
+      expect(find.text('没有符合条件的消息'), findsOneWidget);
+      await tester.tap(find.text('查看全部消息'));
+      await tester.pumpAndSettle();
+      expect(find.text('收藏的消息'), findsOneWidget);
+      await tester.enterText(find.byType(TextField), '收藏');
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('清空搜索'));
+      await tester.pumpAndSettle();
+      expect(
+        tester.widget<TextField>(find.byType(TextField)).controller!.text,
+        isEmpty,
+      );
+      FocusManager.instance.primaryFocus?.unfocus();
+      await tester.longPress(find.text('收藏的消息'));
+      await tester.pumpAndSettle();
+      expect(find.text('收藏'), findsNothing);
+      await tester.tap(find.text('取消收藏'));
+      await tester.pumpAndSettle();
+      expect(messages.single['starred'], isFalse);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
 }

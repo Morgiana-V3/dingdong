@@ -79,7 +79,6 @@ void main() {
       );
       await tester.tap(find.text('哔哩哔哩'));
       await tester.pumpAndSettle();
-      await tester.ensureVisible(find.text('登录并启用任务'));
       await tester.tap(find.text('登录并启用任务'));
       await tester.pumpAndSettle();
       expect(login?.method, 'platformLogin');

@@ -1,182 +1,220 @@
+import '../../data/message_preview.dart';
 import 'package:flutter/material.dart';
 import '../../data/inbox_repository.dart';
 
-class SourceAvatar extends StatelessWidget {
-  const SourceAvatar(this.source, {super.key});
-  final String source;
-  @override
-  Widget build(BuildContext context) {
-    const palette = [
-      Color(0xFFE36547),
-      Color(0xFF558275),
-      Color(0xFF6383A5),
-      Color(0xFFAA8852),
-    ];
-    final index =
-        source.runes.fold<int>(0, (sum, rune) => sum + rune) % palette.length;
-    return Container(
-      width: 32,
-      height: 32,
-      alignment: Alignment.center,
-      decoration: BoxDecoration(
-        color: palette[index].withValues(alpha: .12),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Text(
-        source.isEmpty ? '源' : source.characters.first,
-        style: TextStyle(
-          color: palette[index],
-          fontSize: 15,
-          fontWeight: FontWeight.w700,
-        ),
-      ),
-    );
-  }
-}
-
-class MessageTile extends StatefulWidget {
+class MessageTile extends StatelessWidget {
   const MessageTile({
     super.key,
     required this.message,
+    required this.preview,
     required this.onTap,
     this.onLongPress,
     this.selecting = false,
     this.selected = false,
   });
+
   final InboxMessage message;
+  final Future<MessagePreview?>? preview;
   final VoidCallback onTap;
   final VoidCallback? onLongPress;
   final bool selecting;
   final bool selected;
 
   @override
-  State<MessageTile> createState() => _MessageTileState();
-}
-
-class _MessageTileState extends State<MessageTile> {
-  bool pressed = false;
-
-  @override
   Widget build(BuildContext context) {
-    final message = widget.message;
     final colors = Theme.of(context).colorScheme;
     final time =
         '${message.createdAt.hour.toString().padLeft(2, '0')}:${message.createdAt.minute.toString().padLeft(2, '0')}';
-    final summary = message.excerpt.isEmpty ? message.summary : message.excerpt;
-    final dark = Theme.of(context).brightness == Brightness.dark;
-    final labels = [
-      if (!message.isRead) '未读',
-      if (message.starred) '已收藏',
-      switch (message.format) {
-        'html' => '图文',
-        'markdown' => '文档',
-        _ => '文本',
-      },
-    ];
-    return AnimatedScale(
-      scale: pressed && !MediaQuery.disableAnimationsOf(context) ? .985 : 1,
-      duration: const Duration(milliseconds: 110),
-      curve: Curves.easeOutCubic,
-      child: Card(
-        margin: EdgeInsets.zero,
-        elevation: 0,
-        color: widget.selected
-            ? colors.primaryContainer
-            : (dark ? const Color(0xFF22252A) : Colors.white),
-        surfaceTintColor: Colors.transparent,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          onTap: widget.onTap,
-          onLongPress: widget.onLongPress,
-          onHighlightChanged: (value) => setState(() => pressed = value),
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
+    final meta = TextStyle(
+      fontSize: 12,
+      color: colors.onSurfaceVariant,
+      height: 1.3,
+    );
+    return FutureBuilder<MessagePreview?>(
+      future: preview,
+      builder: (context, snapshot) {
+        final data = snapshot.data;
+        final headline = data?.headline ?? '';
+        final title = headline.isEmpty ? message.title : headline;
+        final summary =
+            (data?.hasTranslation == true
+                    ? data!.description
+                    : message.excerpt.isNotEmpty
+                    ? message.excerpt
+                    : headline.isNotEmpty
+                    ? data!.description
+                    : message.summary)
+                .trim();
+        final taskName = data?.taskName ?? '';
+        final label = taskName.isNotEmpty
+            ? taskName
+            : headline.isNotEmpty
+            ? message.title
+            : message.source;
+        final image = data?.cover;
+        return Semantics(
+          selected: selecting ? selected : null,
+          child: Card(
+            color: colors.surfaceContainerLow,
+            clipBehavior: Clip.antiAlias,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
+              side: BorderSide(
+                color: selected
+                    ? colors.primary
+                    : colors.outlineVariant.withValues(alpha: .52),
+                width: selected ? 1.5 : 1,
+              ),
+            ),
+            child: InkWell(
+              onTap: onTap,
+              onLongPress: onLongPress,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 12,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    if (widget.selecting)
-                      Checkbox(
-                        value: widget.selected,
-                        onChanged: (_) => widget.onTap(),
-                      )
-                    else
-                      SourceAvatar(message.source),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Text(
-                        message.source,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: colors.onSurfaceVariant,
-                        ),
-                      ),
+                    LayoutBuilder(
+                      builder: (context, constraints) {
+                        final width = (constraints.maxWidth * .27).clamp(
+                          64.0,
+                          118.0,
+                        );
+                        return Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    title,
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      fontSize: 15,
+                                      height: 1.4,
+                                      color: colors.onSurface,
+                                      fontWeight: message.isRead
+                                          ? FontWeight.w500
+                                          : FontWeight.w600,
+                                    ),
+                                  ),
+                                  if (summary.isNotEmpty &&
+                                      summary != title) ...[
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      summary,
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        height: 1.45,
+                                        color: colors.onSurfaceVariant,
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ),
+                            if (image != null) ...[
+                              const SizedBox(width: 12),
+                              ClipRRect(
+                                borderRadius: BorderRadius.circular(8),
+                                child: Image.memory(
+                                  image,
+                                  width: width,
+                                  height: width * .72,
+                                  fit: BoxFit.cover,
+                                  excludeFromSemantics: true,
+                                ),
+                              ),
+                            ],
+                          ],
+                        );
+                      },
                     ),
-                    const SizedBox(width: 12),
-                    Text(
-                      time,
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: colors.onSurfaceVariant,
-                      ),
+                    const SizedBox(height: 9),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Wrap(
+                            spacing: 8,
+                            runSpacing: 4,
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            children: [
+                              if (selecting)
+                                Icon(
+                                  selected
+                                      ? Icons.check_circle
+                                      : Icons.radio_button_unchecked,
+                                  size: 16,
+                                  color: selected
+                                      ? colors.primary
+                                      : colors.outline,
+                                  semanticLabel: selected ? '已选中' : '未选中',
+                                ),
+                              DecoratedBox(
+                                decoration: BoxDecoration(
+                                  color: colors.surfaceContainerHighest,
+                                  borderRadius: BorderRadius.circular(5),
+                                ),
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 6,
+                                    vertical: 2,
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      if (!message.isRead) ...[
+                                        Icon(
+                                          Icons.circle,
+                                          size: 5,
+                                          color: colors.primary,
+                                          semanticLabel: '未读',
+                                        ),
+                                        const SizedBox(width: 5),
+                                      ],
+                                      Flexible(
+                                        child: Text(
+                                          label,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: meta.copyWith(
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                              if (message.starred)
+                                Icon(
+                                  Icons.bookmark_rounded,
+                                  size: 14,
+                                  color: colors.primary,
+                                  semanticLabel: '已收藏',
+                                ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Text(time, style: meta),
+                      ],
                     ),
                   ],
                 ),
-                const SizedBox(height: 12),
-                Text(
-                  message.title,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 17,
-                    height: 1.4,
-                    fontWeight: message.isRead
-                        ? FontWeight.w600
-                        : FontWeight.w700,
-                  ),
-                ),
-                if (summary.isNotEmpty) ...[
-                  const SizedBox(height: 8),
-                  Text(
-                    summary,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 13,
-                      height: 1.6,
-                      color: colors.onSurfaceVariant,
-                    ),
-                  ),
-                ],
-                const SizedBox(height: 12),
-                Wrap(
-                  spacing: 12,
-                  runSpacing: 6,
-                  children: [
-                    for (final label in labels)
-                      Text(
-                        label,
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: label == '未读'
-                              ? FontWeight.w600
-                              : FontWeight.w400,
-                          color: label == '未读'
-                              ? colors.primary
-                              : colors.onSurfaceVariant,
-                        ),
-                      ),
-                  ],
-                ),
-              ],
+              ),
             ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 }

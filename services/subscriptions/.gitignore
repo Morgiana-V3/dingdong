@@ -1,0 +1,9 @@
+node_modules/
+data/
+*.log
+.env
+build/
+
+compose.override.yaml
+.env.*
+!.env.example

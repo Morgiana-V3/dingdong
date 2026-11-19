@@ -37,7 +37,7 @@ class _PreparedReaderTransitionState extends State<PreparedReaderTransition>
   void initState() {
     super.initState();
     widget.ready.addListener(_reveal);
-    feedbackDelay = Timer(const Duration(milliseconds: 250), () {
+    feedbackDelay = Timer(const Duration(milliseconds: 700), () {
       if (mounted && !revealing) {
         setState(() => showFeedback = true);
       }
@@ -73,55 +73,61 @@ class _PreparedReaderTransitionState extends State<PreparedReaderTransition>
         widget.routeAnimation.value,
       );
       final offset = revealing ? 1 - entering * returning : 0.0;
-      return Stack(
-        fit: StackFit.expand,
-        children: [
-          ExcludeSemantics(child: widget.background),
-          FractionalTranslation(
-            translation: Offset(offset, 0),
-            child: ExcludeSemantics(
-              excluding: !revealing,
-              child: IgnorePointer(
-                ignoring: !revealing || !entrance.isCompleted,
-                child: widget.child,
+      return ClipRect(
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            ExcludeSemantics(child: widget.background),
+            FractionalTranslation(
+              translation: Offset(offset, 0),
+              child: ExcludeSemantics(
+                excluding: !revealing,
+                child: IgnorePointer(
+                  ignoring: !revealing || !entrance.isCompleted,
+                  child: widget.child,
+                ),
               ),
             ),
-          ),
-          if (!revealing) ...[
-            ExcludeSemantics(child: widget.background),
-            if (showFeedback)
-              Align(
-                alignment: Alignment.bottomCenter,
-                child: SafeArea(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Material(
-                      color: Theme.of(context).colorScheme.surfaceContainerHigh,
-                      borderRadius: BorderRadius.circular(12),
-                      child: Padding(
-                        padding: const EdgeInsets.only(left: 16, right: 4),
-                        child: Row(
-                          children: [
-                            const SizedBox(
-                              width: 16,
-                              height: 16,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            ),
-                            const SizedBox(width: 12),
-                            const Expanded(child: Text('正在打开帖子')),
-                            TextButton(
-                              onPressed: () => Navigator.pop(context),
-                              child: const Text('取消'),
-                            ),
-                          ],
+            if (!revealing) ...[
+              ExcludeSemantics(child: widget.background),
+              if (showFeedback)
+                Align(
+                  alignment: Alignment.topCenter,
+                  child: SafeArea(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Material(
+                        color: Theme.of(
+                          context,
+                        ).colorScheme.surfaceContainerHigh,
+                        borderRadius: BorderRadius.circular(12),
+                        child: Padding(
+                          padding: const EdgeInsets.only(left: 16, right: 4),
+                          child: Row(
+                            children: [
+                              const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              const Expanded(child: Text('正在打开帖子')),
+                              TextButton(
+                                onPressed: () => Navigator.pop(context),
+                                child: const Text('取消'),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     ),
                   ),
                 ),
-              ),
+            ],
           ],
-        ],
+        ),
       );
     },
   );

@@ -40,6 +40,7 @@ class _ReaderPageState extends State<ReaderPage> {
   bool preparingImage = false;
   bool documentRequested = false;
   bool openingLink = false;
+  bool acting = false;
 
   @override
   void initState() {
@@ -242,6 +243,8 @@ class _ReaderPageState extends State<ReaderPage> {
   }
 
   Future<void> _action(String action) async {
+    if (acting) return;
+    setState(() => acting = true);
     try {
       if (action == 'delete') {
         final confirmed = await showAppSheet<bool>(
@@ -273,41 +276,35 @@ class _ReaderPageState extends State<ReaderPage> {
       }
     } catch (_) {
       if (mounted) setState(() => error = '操作未完成，请重试');
+    } finally {
+      if (mounted) setState(() => acting = false);
     }
   }
 
   Future<void> _showInfo() async {
     final message = widget.message;
     final date = message.createdAt;
-    await showModalBottomSheet<void>(
+    await showAppSheet<void>(
       context: context,
-      showDragHandle: true,
-      isScrollControlled: true,
-      useSafeArea: true,
-      builder: (context) => SafeArea(
-        top: false,
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(24, 0, 24, 28),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text('消息信息', style: Theme.of(context).textTheme.titleMedium),
-              const SizedBox(height: 20),
-              SelectableText(
-                message.title,
-                style: Theme.of(context).textTheme.titleLarge,
-              ),
-              const SizedBox(height: 12),
-              Text(message.source),
-              const SizedBox(height: 6),
-              Text(
-                '${date.year}年${date.month}月${date.day}日 '
-                '${date.hour.toString().padLeft(2, '0')}:'
-                '${date.minute.toString().padLeft(2, '0')}',
-              ),
-            ],
-          ),
+      builder: (context) => SheetDialog(
+        title: const Text('消息信息'),
+        content: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SelectableText(
+              message.title,
+              style: Theme.of(context).textTheme.titleLarge,
+            ),
+            const SizedBox(height: 12),
+            Text(message.source),
+            const SizedBox(height: 6),
+            Text(
+              '${date.year}年${date.month}月${date.day}日 '
+              '${date.hour.toString().padLeft(2, '0')}:'
+              '${date.minute.toString().padLeft(2, '0')}',
+            ),
+          ],
         ),
       ),
     );
@@ -317,8 +314,21 @@ class _ReaderPageState extends State<ReaderPage> {
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(
       toolbarHeight: 48,
+      title: Text(
+        widget.message.source,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: Theme.of(context).textTheme.titleSmall,
+      ),
       leading: BackButton(onPressed: () => Navigator.pop(context)),
       actions: [
+        IconButton(
+          tooltip: starred ? '取消收藏' : '收藏消息',
+          onPressed: acting ? null : () => _action('starred'),
+          icon: Icon(
+            starred ? Icons.bookmark_rounded : Icons.bookmark_border_rounded,
+          ),
+        ),
         SheetMenuButton<String>(
           tooltip: '更多',
           onSelected: (action) {
@@ -333,11 +343,6 @@ class _ReaderPageState extends State<ReaderPage> {
               value: 'info',
               label: '消息信息',
               icon: Icons.info_outline,
-            ),
-            SheetChoice(
-              value: 'starred',
-              label: starred ? '取消收藏' : '收藏',
-              icon: Icons.star_outline,
             ),
             const SheetChoice(
               value: 'read',

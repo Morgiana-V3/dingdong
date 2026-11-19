@@ -1,0 +1,2 @@
+*.sh text eol=lf
+vendor/studio/** -text whitespace=cr-at-eol

@@ -2,7 +2,7 @@
 
 一个可自部署的 Android 推送收件箱。电脑脚本通过 HTTP API 发送 HTML、Markdown 或纯文本，手机接收后离线保存和阅读。
 
-当前版本：**0.1.0**。客户端使用 Flutter 和 Kotlin，服务器使用 FastAPI 和 SQLite，通过 Docker Compose 部署。无需另外安装数据库。
+当前版本 **0.1.0**。客户端使用 Flutter 和 Kotlin。服务端包括基于 FastAPI 和 SQLite 的消息中转，以及基于 Node.js 和 Cordis 的订阅服务。两套服务均支持 Docker Compose 部署。
 
 ## 功能
 
@@ -12,7 +12,7 @@
 - **本地备份**：JSON 导出与合并导入，包含正文、内嵌图片、已读、收藏和来源静默设置。
 - **后台接收**：Android 常驻通知与 WebSocket，断线重连、离线补收、落盘确认和幂等去重。
 - **服务器配置**：App 内填写 IP、域名及端口，更换服务器无需重新编译；提供连接诊断。
-- **Studio 订阅管理**：手机通过同一服务器查看、新增、编辑、启停和删除 Studio 内置订阅，调整执行时间、兴趣规则、贴吧列表及汇总内容源。
+- **服务器订阅**：Node 服务定时执行订阅任务。手机通过同一服务器管理任务、平台账号和 AI 配置。
 - **脚本工具**：自动内嵌图片、失败重试、查询送达状态，以及告警、日报、帖子汇总模板。
 
 帖子在 HTML 和图片首帧准备完成后从右侧滑入，避免先展示空白阅读页。准备较慢时保留收件箱画面并提供取消操作。
@@ -41,11 +41,11 @@
 
 ```sh
 git clone git@github.com:Morgiana-V3/dingdong.git
-cd dingdong/server
+cd dingdong/services/relay
 cp .env.example .env
 ```
 
-如果服务器没有 GitHub SSH 凭据，也可以使用 `https://github.com/Morgiana-V3/dingdong.git`，或单独复制 `server/` 目录。
+如果服务器没有 GitHub SSH 凭据，也可以使用 `https://github.com/Morgiana-V3/dingdong.git`，或单独复制 `services/relay/` 目录。
 
 分别运行两次下面的命令，生成两个不同的随机密钥：
 
@@ -77,6 +77,8 @@ curl http://127.0.0.1:8080/health
 
 服务默认使用持久化命名卷保存 SQLite 数据，更新容器不会清空消息队列。不要使用 `docker compose down -v` 删除数据卷。镜像导出、迁移服务器及数据卷备份见 [部署与迁移](docs/deployment.md)。
 
+如需服务器定时订阅，继续部署 [订阅服务](services/subscriptions/README.md)。同机部署两套服务、共享中转凭据和配置 HTTPS 的步骤见 [完整部署说明](services/subscriptions/deploy/README.md)。
+
 ### 2. 构建并安装 App
 
 需要 Flutter SDK、Android SDK 和 JDK 17。已验证环境为 Flutter 3.41.5 / Dart 3.11.3；App 支持 Android 8.0（API 26）及以上版本。回到仓库根目录后执行：
@@ -95,7 +97,7 @@ adb -s 设备序列号 install -r build/app/outputs/flutter-apk/app-debug.apk
 
 此命令构建调试包，使用本机调试签名。正式分发前需要自行配置发布签名；当前 Android release 构建配置也使用调试签名，不应视为已经配置正式签名。
 
-打开 App，进入左侧菜单的“设置”：
+打开 App，进入左侧菜单的“设置 → 服务器连接”：
 
 1. 填写服务器地址，例如 `http://服务器IP:8080` 或 `https://你的域名`。
 2. 填写 `DINGDONG_READ_TOKEN` 对应的接收密钥，保存并连接。
@@ -117,7 +119,7 @@ Linux / macOS 可使用 `export DINGDONG_URL=...` 和 `export DINGDONG_SEND_TOKE
 
 工具会将文档目录内的本地图片转为 data URI。跨进程重试时传入稳定的 `--id`，并保持内容相同；同一 ID 的不同内容会被拒绝。发送命令的 `--wait` 用于等待手机接收确认，不是只检查服务器是否接受请求。
 
-模板生成、静默消息、状态查询及图片路径规则见 [脚本发送与模板](docs/sending.md)。仓库包含演示模板，不包含真实社交平台采集器或自动采集任务。
+`examples/` 提供发送示例和模板。订阅插件位于 `services/subscriptions/vendor/studio/`。[脚本发送与模板](docs/sending.md)
 
 ## 外部 App 跳转与代理网络
 
@@ -135,17 +137,17 @@ Linux / macOS 可使用 `export DINGDONG_URL=...` 和 `export DINGDONG_SEND_TOKE
 
 从「订阅管理」连接当前服务器，先查看任务列表。点击「添加任务」后选择服务器安装的插件，配置并开启任务，再到右侧「所需账号」完成任务需要的登录；没有已开启任务时，不展示独立登录入口。多个任务共用同一平台账号，暂停或删除任务后，相应账号需求自动移除，已保存登录态保留。
 
-Node/Cordis 服务器已适配 Studio 的 B 站指定 UP 主、贴吧兴趣精选、X 兴趣发现、小红书兴趣发现和统一推送。任务支持手动、固定间隔和每天定点，AI 配置在右上角「更多」中管理。B 站可从关注列表选择 UP 主，首次执行建立基线，之后只推送新视频；旧版任务保持原配置。各平台真实可用性取决于服务器网络和账号验证。
+Node/Cordis 服务器已适配 Studio 的 B 站指定 UP 主、贴吧兴趣精选、X 兴趣发现、小红书兴趣发现和统一推送。任务支持手动、固定间隔和每天定点，AI 配置在右上角「服务器配置」中管理。B 站可从关注列表选择 UP 主，首次执行建立基线，之后只推送新视频；旧版任务保持原配置。各平台真实可用性取决于服务器网络和账号验证。
 
 App 沿用设置中保存的服务器地址和接收密钥。标准 HTTP 地址的订阅与账号请求自动使用同主机 HTTPS，不修改原消息命名空间；自定义端口须配置 HTTPS。平台密码在独立官方页面输入，用户授权后才上传会话。账号服务及任务运行在服务器，手机和电脑无需保持打开。
 
 原电脑 Studio 的任务不自动迁移，从订阅管理右上角「更多 → 电脑 Studio 管理」进入。手机新建的服务器任务与原桌面任务分别保存。
 
-设置中的接收密钥默认不回填；输入框为空时点击眼睛图标，可在禁止截屏的原生窗口查看已保存密钥。侧边栏的连接状态放在设置同一行右侧，绿色表示已连接，红色表示未连接，可查看具体连接原因。
+设置中的接收密钥默认不回填；输入框为空时点击眼睛图标，可在禁止截屏的原生窗口查看已保存密钥。订阅管理顶部显示当前服务器的接收状态，绿色表示已连接，红色表示未连接，可查看具体连接原因。
 
 ### 现有桌面 Studio 遥控
 
-1. 更新此仓库的服务器：在 `server/` 执行 `docker compose up -d --build`，保留原有数据卷和密钥。
+1. 更新消息中转。在中转的部署目录执行 `docker compose up -d --build`，沿用原有 Compose 项目名、数据卷和密钥。
 2. 更新并启动 DingDong Studio，在「应用设置 → 允许手机管理订阅」选择叮咚渠道。该渠道的服务器须与手机设置一致；Studio 使用发送密钥，手机继续使用原有接收密钥。
 3. 安装新版 App，从「订阅管理 → 更多 → 电脑 Studio 管理」进入。可新增、编辑、启停和删除 B 站、贴吧、X、小红书订阅及订阅汇总，选择已有 AI/推送渠道并调整时间与过滤规则。
 
@@ -201,11 +203,15 @@ mobile/                 Flutter 页面与 Kotlin Android 实现
   android/              后台服务、SQLite、备份与原生首帧同步
   test/                 Flutter 正式回归测试
   integration_test/     独立设备收发集成测试
-server/                 FastAPI 服务与 Docker 部署文件
-  Dockerfile
-  compose.yaml
-  .env.example          空白配置模板，不含真实密钥
-  tests/                接口与投递回归测试
+services/
+  relay/                FastAPI 消息中转、待收队列和 Studio 控制入口
+    tests/              接口与投递回归测试
+  subscriptions/        Node/Cordis 订阅执行、账号会话与 AI 处理
+    src/                订阅运行时与 API
+    web/                订阅管理台
+    vendor/studio/      随服务构建的 Studio 插件源码
+    deploy/             HTTPS 反向代理与网络配置模板
+    tests/              Node 接口与运行回归测试
 tools/                  发送工具与模板生成器
   tests/                发送工具回归测试
   testing/              独立设备测试配套工具
@@ -217,9 +223,7 @@ docs/                   部署、发送、架构和开发说明
 
 ## 开发与验证
 
-本次版本已通过 Flutter 静态分析、14 项 Flutter 测试、6 项 Android 测试、5 项发送工具测试、4 项服务端测试以及 Android Lint 和调试构建。真机检查包括 HTML 首帧准备后滑入、返回和再次打开；不代表已验证所有 WebView 版本或整夜后台稳定性。
-
-运行命令与独立设备测试说明见 [开发与验证](docs/development.md)。架构、存储及接收确认机制见 [技术方案](docs/architecture.md)。
+项目包含 Flutter 与 Android 回归测试、消息中转和订阅服务接口测试，以及网页管理台与发送工具测试。[开发与验证](docs/development.md) · [技术方案](docs/architecture.md)
 
 ## Studio 插件订阅（Node）
 
@@ -227,4 +231,4 @@ docs/                   部署、发送、架构和开发说明
 
 选择菜单、时间日期与确认操作统一从底部打开。统一推送可选择已有任务，也可直接添加内容源、选择插件并配置；新来源默认暂停，保存后自动选入当前汇总。取消汇总编辑不会删除已保存的来源。旧版 B 站任务可作为汇总来源；已经被其他启用汇总占用的来源不可重复选择。
 
-账号平台按 bilibili/x/xiaohongshu 隔离，复用当前服务器 HTTPS 与接收凭据；独立官方登录页只上传当前平台必要会话。B 站可读取关注列表选择 UP 主；X、小红书同时提供通过 SSH 访问服务器浏览器的备用登录入口。AI 配置在订阅管理「更多」中，加密保存在服务器。Node 运行时、投递进度与实际验证范围见 ../dingdong-node/README.md。
+账号平台按 bilibili/x/xiaohongshu 隔离，复用当前服务器 HTTPS 与接收凭据。独立官方登录页只上传当前平台必要会话。B 站可读取关注列表选择 UP 主。X、小红书同时提供通过 SSH 访问服务器浏览器的备用登录入口。AI 配置在订阅管理右上角「服务器配置」中，加密保存在服务器。[订阅服务说明](services/subscriptions/README.md)

@@ -10,6 +10,7 @@ import 'subscription_providers.dart';
 import 'subscription_style.dart';
 import '../settings/settings_page.dart';
 import '../../ui/connection_badge.dart';
+import '../../ui/theme.dart';
 
 class SubscriptionManagementPage extends StatefulWidget {
   const SubscriptionManagementPage({super.key, required this.repository});
@@ -151,21 +152,9 @@ class _SubscriptionManagementPageState extends State<SubscriptionManagementPage>
     active = false;
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) => StatefulBuilder(
-          builder: (context, update) => SubscriptionStyle(
-            child: Scaffold(
-              appBar: AppBar(title: const Text('服务器连接')),
-              body: SettingsPage(
-                repository: widget.repository,
-                settings: connection,
-                connectionOnly: true,
-                onChanged: () async {
-                  await refresh();
-                  if (context.mounted) update(() {});
-                },
-              ),
-            ),
-          ),
+        builder: (_) => ServerConnectionPage(
+          repository: widget.repository,
+          settings: connection,
         ),
       ),
     );
@@ -298,7 +287,7 @@ class _SubscriptionManagementPageState extends State<SubscriptionManagementPage>
       );
     } else if (state == 'needs_login') {
       action = TextButton(
-        onPressed: () => tabs.animateTo(1),
+        onPressed: !busy && error == null ? () => tabs.animateTo(1) : null,
         child: const Text('去登录'),
       );
     } else if (state == 'needs_config') {
@@ -308,7 +297,9 @@ class _SubscriptionManagementPageState extends State<SubscriptionManagementPage>
       );
     } else if (state == 'running') {
       action = TextButton(
-        onPressed: () => perform({'action': 'cancel', 'id': task['id']}),
+        onPressed: !busy && error == null
+            ? () => perform({'action': 'cancel', 'id': task['id']})
+            : null,
         child: const Text('停止执行'),
       );
     } else if (state == 'grouped') {
@@ -361,15 +352,18 @@ class _SubscriptionManagementPageState extends State<SubscriptionManagementPage>
                       ],
                     ),
                   ),
-                  Switch(
-                    value: task['enabled'] == true,
-                    onChanged: available
-                        ? (value) => perform({
-                            'action': 'toggle',
-                            'id': task['id'],
-                            'enabled': value,
-                          })
-                        : null,
+                  Semantics(
+                    label: '${task['name']} · 启用订阅',
+                    child: Switch(
+                      value: task['enabled'] == true,
+                      onChanged: !busy && error == null
+                          ? (value) => perform({
+                              'action': 'toggle',
+                              'id': task['id'],
+                              'enabled': value,
+                            })
+                          : null,
+                    ),
                   ),
                 ],
               ),
@@ -386,7 +380,9 @@ class _SubscriptionManagementPageState extends State<SubscriptionManagementPage>
                           color: blocked
                               ? colors.error
                               : state == 'active'
-                              ? const Color(0xFF32815B)
+                              ? Theme.of(context).brightness == Brightness.dark
+                                    ? const Color(0xFF8CD7AE)
+                                    : const Color(0xFF32815B)
                               : null,
                         ),
                         if (task['lastRunAt'] != null)
@@ -419,7 +415,7 @@ class _SubscriptionManagementPageState extends State<SubscriptionManagementPage>
                         value: 'delete',
                         label: '删除',
                         icon: Icons.delete_outline,
-                        enabled: !busy,
+                        enabled: !busy && error == null,
                       ),
                     ],
                     onSelected: (value) {
@@ -446,15 +442,11 @@ class _SubscriptionManagementPageState extends State<SubscriptionManagementPage>
         Uri.tryParse(connection['endpoint'] as String? ?? '')?.host ?? '';
     final colors = Theme.of(context).colorScheme;
     return SubscriptionStyle(
+      compact: true,
       child: Scaffold(
         appBar: AppBar(
           title: const Text('订阅管理'),
           actions: [
-            IconButton(
-              tooltip: '刷新订阅',
-              onPressed: busy ? null : refresh,
-              icon: const Icon(Icons.refresh),
-            ),
             IconButton(
               tooltip: '服务器配置',
               onPressed: busy || snapshot == null ? null : configureServer,
@@ -463,8 +455,8 @@ class _SubscriptionManagementPageState extends State<SubscriptionManagementPage>
             SheetMenuButton<String>(
               tooltip: '更多',
               onSelected: (value) async {
-                if (value == 'server') {
-                  await configureServer();
+                if (value == 'refresh') {
+                  await refresh();
                   return;
                 }
                 active = false;
@@ -477,13 +469,12 @@ class _SubscriptionManagementPageState extends State<SubscriptionManagementPage>
                 if (mounted) await refresh();
               },
               choices: [
-                if (snapshot != null)
-                  const SheetChoice(
-                    value: 'server',
-                    label: '服务器配置',
-                    description: 'AI 服务、任务配置与可用插件',
-                    icon: Icons.dns_outlined,
-                  ),
+                SheetChoice(
+                  value: 'refresh',
+                  label: '刷新订阅',
+                  icon: Icons.refresh,
+                  enabled: !busy,
+                ),
                 const SheetChoice(
                   value: 'studio',
                   label: '电脑 Studio 管理',
@@ -509,35 +500,41 @@ class _SubscriptionManagementPageState extends State<SubscriptionManagementPage>
               onRefresh: refresh,
               child: ListView(
                 key: const ValueKey('subscription-task-list'),
-                padding: const EdgeInsets.fromLTRB(14, 10, 14, 20),
+                padding: pageInsets(context, top: 4),
                 physics: const AlwaysScrollableScrollPhysics(),
                 children: [
                   if (busy) const LinearProgressIndicator(),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextButton.icon(
-                          onPressed: configureConnection,
-                          icon: const Icon(Icons.dns_outlined, size: 16),
-                          label: Text(
-                            host.isEmpty ? '配置服务器连接' : host,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
+                  ListTile(
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+                    leading: const Icon(Icons.dns_outlined, size: 20),
+                    minLeadingWidth: 20,
+                    horizontalTitleGap: 8,
+                    title: Text(
+                      host.isEmpty ? '配置服务器连接' : host,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    trailing: ConnectionBadge(
+                      status: connection['status'] as String? ?? '未连接',
+                    ),
+                    onTap: configureConnection,
+                  ),
+                  const Divider(height: 1),
+                  const SizedBox(height: 6),
+                  if (error != null)
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        InlineNotice(error!),
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: TextButton.icon(
+                            onPressed: busy ? null : refresh,
+                            icon: const Icon(Icons.refresh),
+                            label: const Text('重试'),
                           ),
                         ),
-                      ),
-                      ConnectionBadge(
-                        status: connection['status'] as String? ?? '未连接',
-                      ),
-                    ],
-                  ),
-                  if (error != null)
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      child: Text(
-                        error!,
-                        style: TextStyle(color: colors.error),
-                      ),
+                      ],
                     ),
                   const SizedBox(height: 2),
                   Row(
@@ -579,15 +576,12 @@ class _SubscriptionManagementPageState extends State<SubscriptionManagementPage>
                             color: colors.outline,
                           ),
                           const SizedBox(height: 12),
-                          const Text('点击「添加任务」，选择插件并配置订阅内容。'),
-                          const SizedBox(height: 6),
+                          const Text('还没有订阅任务'),
+                          const SizedBox(height: 8),
                           Text(
-                            '任务需要登录时，会在右侧「所需账号」提醒。',
+                            '添加任务，选择你想接收的内容。',
                             textAlign: TextAlign.center,
-                            style: TextStyle(
-                              color: colors.onSurfaceVariant,
-                              height: 1.5,
-                            ),
+                            style: TextStyle(color: colors.onSurfaceVariant),
                           ),
                         ],
                       ),

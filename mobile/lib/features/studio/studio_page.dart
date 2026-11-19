@@ -1,3 +1,4 @@
+import '../../ui/theme.dart';
 import '../../ui/selection_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -192,7 +193,7 @@ class _StudioPageState extends State<StudioPage> {
         onRefresh: refresh,
         child: ListView(
           physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
+          padding: pageInsets(context, bottom: 100),
           children: [
             if (busy) const LinearProgressIndicator(),
             ListTile(
@@ -228,45 +229,55 @@ class _StudioPageState extends State<StudioPage> {
               ),
             if (online)
               for (final task in tasks)
-                Card(
-                  child: Column(
-                    children: [
-                      ListTile(
-                        title: Text(task['name'] as String),
-                        subtitle: Text(
-                          '${plugins.where((p) => p['id'] == task['pluginId']).map((p) => p['name']).firstOrNull ?? '订阅'} · ${scheduleLabel(task)}${running.contains(task['id']) ? '\n正在执行' : ''}',
-                        ),
-                        onTap: busy || running.contains(task['id'])
-                            ? null
-                            : () => edit(task),
-                        trailing: Switch(
-                          value: task['enabled'] == true,
-                          onChanged: busy || running.contains(task['id'])
-                              ? null
-                              : (value) => perform('setEnabled', {
-                                  'id': task['id'],
-                                  'enabled': value,
-                                }),
-                        ),
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Card(
+                    child: ListTile(
+                      title: Text(
+                        task['name'] as String,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
                       ),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.end,
+                      subtitle: Text(
+                        '${plugins.where((p) => p['id'] == task['pluginId']).map((p) => p['name']).firstOrNull ?? '订阅'} · ${scheduleLabel(task)}${running.contains(task['id']) ? '\n正在执行' : ''}',
+                      ),
+                      onTap: busy || running.contains(task['id'])
+                          ? null
+                          : () => edit(task),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
                         children: [
-                          TextButton(
-                            onPressed: busy || running.contains(task['id'])
+                          Switch(
+                            value: task['enabled'] == true,
+                            onChanged: busy || running.contains(task['id'])
                                 ? null
-                                : () => edit(task),
-                            child: const Text('编辑'),
+                                : (value) => perform('setEnabled', {
+                                    'id': task['id'],
+                                    'enabled': value,
+                                  }),
                           ),
-                          TextButton(
-                            onPressed: busy || running.contains(task['id'])
-                                ? null
-                                : () => remove(task),
-                            child: const Text('删除'),
+                          SheetMenuButton<String>(
+                            tooltip: '订阅操作 · ${task['name']}',
+                            choices: [
+                              SheetChoice(
+                                value: 'edit',
+                                label: '编辑',
+                                enabled: !busy && !running.contains(task['id']),
+                              ),
+                              SheetChoice(
+                                value: 'delete',
+                                label: '删除',
+                                enabled: !busy && !running.contains(task['id']),
+                              ),
+                            ],
+                            onSelected: (action) {
+                              if (action == 'edit') edit(task);
+                              if (action == 'delete') remove(task);
+                            },
                           ),
                         ],
                       ),
-                    ],
+                    ),
                   ),
                 ),
           ],
@@ -592,7 +603,7 @@ class _StudioTaskEditorState extends State<StudioTaskEditor> {
         child: AbsorbPointer(
           absorbing: busy,
           child: ListView(
-            padding: const EdgeInsets.all(20),
+            padding: pageInsets(context),
             children: [
               if (busy) const LinearProgressIndicator(),
               if (error != null)

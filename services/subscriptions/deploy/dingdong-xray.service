@@ -1,0 +1,25 @@
+[Unit]
+Description=Dingdong outbound Xray proxy
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=dingdong-proxy
+Group=dingdong-proxy
+ExecStart=/opt/dingdong-xray/xray run -config /etc/dingdong-xray/config.json
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+CapabilityBoundingSet=
+LimitNOFILE=65536
+MemoryMax=256M
+
+[Install]
+WantedBy=multi-user.target

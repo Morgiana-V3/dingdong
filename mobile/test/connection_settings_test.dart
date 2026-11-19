@@ -153,6 +153,10 @@ void main() {
         ),
       );
       final toggle = find.byType(SwitchListTile);
+      expect(toggle, findsNothing);
+      await tester.ensureVisible(find.text('网络与诊断'));
+      await tester.tap(find.text('网络与诊断'));
+      await tester.pumpAndSettle();
       await tester.ensureVisible(toggle);
       expect(tester.widget<SwitchListTile>(toggle).value, false);
       await tester.tap(toggle);

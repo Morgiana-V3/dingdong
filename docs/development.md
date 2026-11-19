@@ -34,17 +34,30 @@ Linux / macOS 使用 `./gradlew`。原生回归测试覆盖数据库迁移、全
 
 Windows 下如果 Lint 报 `local.properties` 的 `PropertyEscape`，检查 SDK 路径中的盘符冒号和反斜杠转义；修正本地配置后执行 `:app:lintAnalyzeDebug --rerun :app:lintDebug`，不要关闭该检查。此文件不会提交仓库。
 
-## Python
-
-服务端：
+## FastAPI 消息中转
 
 ```sh
-cd server
+cd services/relay
 python -m pip install -r requirements-dev.txt
 python -m unittest discover -s tests -v
 ```
 
-发送与模板工具：从仓库根目录执行，无需第三方依赖。
+## Node 订阅服务
+
+从仓库根目录进入服务目录运行回归测试。网页测试使用本机 Chrome 或由 `CHROMIUM_EXECUTABLE` 指定的 Chromium。
+
+```sh
+cd services/subscriptions
+npm ci
+npm test
+npm run test:web
+```
+
+启动、Studio 插件同步和部署入口见 [订阅服务说明](../services/subscriptions/README.md)。
+
+## 发送与模板工具
+
+从仓库根目录执行，无需第三方依赖。
 
 ```sh
 python -m unittest discover -s tools/tests -v

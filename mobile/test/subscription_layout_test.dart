@@ -5,7 +5,7 @@ import 'package:dingdong/features/studio/subscription_management_page.dart';
 import 'package:dingdong/ui/theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
-import 'package:flutter/services.dart';
+import 'preview_fonts.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 class LayoutRepository extends InboxRepository {
@@ -54,12 +54,7 @@ void main() {
         addTearDown(tester.view.resetDevicePixelRatio);
         final output = Platform.environment['DINGDONG_LAYOUT_OUTPUT'];
         if (output != null) {
-          await tester.runAsync(() async {
-            final bytes = await File('C:/Windows/Fonts/msyh.ttc').readAsBytes();
-            final loader = FontLoader('Roboto')
-              ..addFont(Future.value(ByteData.sublistView(bytes)));
-            await loader.load();
-          });
+          await tester.runAsync(loadPreviewFonts);
         }
         final boundaryKey = GlobalKey();
         await tester.pumpWidget(

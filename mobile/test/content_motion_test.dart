@@ -32,7 +32,7 @@ void main() {
       await tester.tapAt(tester.getCenter(find.text('正文链接')));
       expect(taps, 0);
       await tester.pump(const Duration(milliseconds: 260));
-      expect(find.text('正在打开帖子'), findsOneWidget);
+      expect(find.text('正在打开帖子'), findsNothing);
       ready.value = true;
       await tester.pump();
       expect(tester.getTopLeft(find.byKey(readerKey)).dx, 800);
@@ -81,7 +81,8 @@ void main() {
     );
     await tester.tap(find.text('打开'));
     await tester.pump();
-    await tester.pump(const Duration(milliseconds: 260));
+    await tester.pump(const Duration(milliseconds: 720));
+    expect(tester.getTopLeft(find.text('正在打开帖子')).dy, lessThan(100));
     await tester.tap(find.text('取消'));
     await tester.pumpAndSettle();
     expect(returned, isTrue);

@@ -5,13 +5,7 @@ import 'package:html/dom.dart';
 import 'package:markdown/markdown.dart' as markdown;
 import 'external_link.dart';
 
-String buildDocument(
-  String content,
-  String format, {
-  String? title,
-  List<EmbeddedImage>? images,
-  required bool dark,
-}) {
+Document parseMessageDocument(String content, String format) {
   var source = content;
   if (format == 'markdown') {
     source = markdown.markdownToHtml(
@@ -21,7 +15,105 @@ String buildDocument(
   } else if (format == 'text') {
     source = '<pre>${const HtmlEscape().convert(content)}</pre>';
   }
-  final document = html.parse(source);
+  return html.parse(source);
+}
+
+void _preparePostCards(Document document) {
+  final articles = document.querySelectorAll('main > article.post');
+  final scopes = articles.isEmpty
+      ? [document.querySelector('main') ?? document.body!]
+      : articles;
+  var nextId = 0;
+  for (final card in scopes) {
+    final spans = card.querySelectorAll('span[data-dingdong-original]');
+    if (spans.isEmpty) continue;
+    var id = 'dingdong-language-${nextId++}';
+    while (document.getElementById(id) != null) {
+      id = 'dingdong-language-${nextId++}';
+    }
+    final header =
+        card.children
+            .where((e) => e.classes.contains('post-header'))
+            .firstOrNull ??
+        (Element.tag('header')..classes.add('post-header'));
+    if (header.parent == null) card.nodes.insert(0, header);
+    final bar =
+        header.querySelector('.origin') ??
+        (Element.tag('div')..classes.add('origin'));
+    if (bar.parent == null) header.append(bar);
+    header.classes.add('dd-language-header');
+    // A native checkbox scoped to this card also works in a script-free WebView.
+    card.nodes.insert(
+      0,
+      Element.tag('input')
+        ..id = id
+        ..classes.add('dd-language')
+        ..attributes.addAll({'type': 'checkbox', 'aria-label': '显示本帖原文'}),
+    );
+    header.append(
+      Element.tag('label')
+        ..attributes['for'] = id
+        ..classes.addAll(['platform', 'dd-language-label'])
+        ..append(
+          Element.tag('span')
+            ..classes.add('dd-translation-view')
+            ..text = '源',
+        )
+        ..append(
+          Element.tag('span')
+            ..classes.add('dd-original-view')
+            ..text = '译',
+        ),
+    );
+    for (final span in spans) {
+      final original = span.attributes.remove('data-dingdong-original')!;
+      final translated = span.text;
+      span.nodes.clear();
+      span.append(
+        Element.tag('span')
+          ..classes.add('dd-translation-view')
+          ..text = translated,
+      );
+      span.append(
+        Element.tag('span')
+          ..classes.add('dd-original-view')
+          ..text = original,
+      );
+    }
+  }
+  if (nextId == 0 &&
+      document.querySelector('.post-content .quote > .more') == null) {
+    return;
+  }
+  document.head!.append(
+    Element.tag('style')
+      ..text = '''
+    .dd-language { position:absolute; width:1px; height:1px; clip-path:inset(50%); overflow:hidden; }
+    .dd-language-header { display:grid; grid-template-columns:minmax(0,1fr) auto;
+      align-items:center; gap:12px; padding-block-start:17px; }
+    .dd-language-header .origin { padding-inline-end:0; }
+    .dd-language-label { position:relative; min-width:36px; margin-inline-end:20px; padding-inline:8px;
+      line-height:1.5; text-align:center; transform:none; cursor:pointer;
+      -webkit-tap-highlight-color:transparent; }
+    .dd-language-label::after { content:''; position:absolute; inset:-5px; }
+    .dd-original-view, .dd-language:checked ~ * .dd-translation-view { display:none; }
+    .dd-language:checked ~ * .dd-original-view { display:inline; }
+    .dd-language:focus-visible ~ header .dd-language-label { outline:2px solid currentColor; outline-offset:2px; }
+    .post-content .quote > details.more { margin-block-end:12px; }
+    .post-content .quote > details.more .full-text > p:last-child { margin-bottom:0; }
+  ''',
+  );
+}
+
+String buildDocument(
+  String content,
+  String format, {
+  String? title,
+  List<EmbeddedImage>? images,
+  required bool dark,
+}) {
+  final document = parseMessageDocument(content, format);
+  if (format == 'html') _preparePostCards(document);
   for (final anchor in document.querySelectorAll('a')) {
     // Keep all clicks in the existing WebView so navigation is intercepted even
     // for target=_blank links. App/intent handling never executes page scripts.

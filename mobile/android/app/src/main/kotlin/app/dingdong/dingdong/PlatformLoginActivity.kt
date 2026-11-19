@@ -21,6 +21,8 @@ import android.view.View
 import android.view.Gravity
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
+import android.content.res.Configuration
+import android.widget.ScrollView
 import android.content.res.ColorStateList
 import android.webkit.WebChromeClient
 import okhttp3.MediaType.Companion.toMediaType
@@ -37,7 +39,9 @@ class PlatformLoginActivity : Activity() {
     private lateinit var status: TextView
     private lateinit var upload: Button
     private lateinit var clearLogin: Button
-    private lateinit var sessionView: TextView
+    private lateinit var sessionView: ScrollView
+    private val darkTheme get() = (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
+    private val primaryColor get() = if (darkTheme) Color.rgb(255, 173, 149) else Color.rgb(172, 70, 43)
     private lateinit var loading: ProgressBar
     private val feedback = PlatformLoginFeedback()
     private val loginHandler = Handler(Looper.getMainLooper())
@@ -82,8 +86,7 @@ class PlatformLoginActivity : Activity() {
             return
         }
         window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
-        val surfaceColor = Color.rgb(250, 250, 248)
-        val accent = Color.rgb(227, 101, 71)
+        val surfaceColor = if (darkTheme) Color.rgb(24, 26, 29) else Color.rgb(250, 250, 248)
         val layout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(surfaceColor)
@@ -104,24 +107,24 @@ class PlatformLoginActivity : Activity() {
         toolbar.addView(TextView(this).apply {
             text = "登录$platformName"
             textSize = 20f
-            setTextColor(Color.rgb(32, 34, 36))
+            setTextColor(if (darkTheme) Color.WHITE else Color.rgb(32, 34, 36))
             setTypeface(null, android.graphics.Typeface.BOLD)
         })
         layout.addView(toolbar)
         status = TextView(this).apply {
             textSize = 13f
-            setPadding(dp(16), dp(14), dp(16), dp(14))
-            setTextColor(Color.rgb(84, 86, 88))
+            setPadding(dp(12), dp(8), dp(12), dp(8))
+            setTextColor(if (darkTheme) Color.rgb(220, 220, 217) else Color.rgb(84, 86, 88))
             background = GradientDrawable().apply {
-                setColor(Color.rgb(240, 241, 238))
+                setColor(if (darkTheme) Color.rgb(38, 40, 43) else Color.rgb(240, 241, 238))
                 cornerRadius = dp(16).toFloat()
             }
         }
         layout.addView(status, LinearLayout.LayoutParams(-1, -2).apply {
-            setMargins(dp(20), dp(8), dp(20), dp(12))
+            setMargins(dp(16), 0, dp(16), dp(8))
         })
         loading = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
-            progressTintList = ColorStateList.valueOf(accent)
+            progressTintList = ColorStateList.valueOf(primaryColor)
         }
         layout.addView(loading, LinearLayout.LayoutParams(-1, dp(2)))
         web = WebView(this)
@@ -158,13 +161,16 @@ class PlatformLoginActivity : Activity() {
         }
         web.setDownloadListener { _, _, _, _, _ -> status.text = "请在网页登录，无需下载其他应用" }
         layout.addView(web, LinearLayout.LayoutParams(-1, 0, 1f))
-        sessionView = TextView(this).apply {
-            text = "✓\n已在手机登录\n\n确认授权后，服务器将验证账号并读取订阅内容。"
-            textSize = 20f
-            gravity = Gravity.CENTER
-            setTextColor(Color.rgb(54, 93, 79))
-            setPadding(dp(32), dp(24), dp(32), dp(24))
+        sessionView = ScrollView(this).apply {
+            isFillViewport = true
             visibility = View.GONE
+            addView(TextView(this@PlatformLoginActivity).apply {
+                text = "确认授权后，服务器将使用当前账号读取订阅内容。"
+                textSize = 16f
+                gravity = Gravity.CENTER
+                setTextColor(if (darkTheme) Color.WHITE else Color.rgb(32, 34, 36))
+                setPadding(dp(24), dp(12), dp(24), dp(12))
+            })
         }
         layout.addView(sessionView, LinearLayout.LayoutParams(-1, 0, 1f))
         val actions = LinearLayout(this).apply {
@@ -175,7 +181,7 @@ class PlatformLoginActivity : Activity() {
             isEnabled = false
             setOnClickListener { confirmUpload() }
         }
-        actions.addView(upload, LinearLayout.LayoutParams(-1, dp(50)))
+        actions.addView(upload, LinearLayout.LayoutParams(-1, -2))
         clearLogin = button("切换登录账号", false).apply {
             setOnClickListener {
                 if (feedback.uploading) return@setOnClickListener
@@ -199,7 +205,7 @@ class PlatformLoginActivity : Activity() {
                     }.show()
             }
         }
-        actions.addView(clearLogin, LinearLayout.LayoutParams(-1, dp(44)).apply { topMargin = dp(6) })
+        actions.addView(clearLogin, LinearLayout.LayoutParams(-1, -2))
         layout.addView(actions)
         setContentView(layout)
         layout.requestApplyInsets()
@@ -241,6 +247,7 @@ class PlatformLoginActivity : Activity() {
             feedback.hasSession -> "授权给当前服务器"
             else -> "等待登录"
         }
+        upload.visibility = if (feedback.hasSession) View.VISIBLE else View.GONE
         upload.isEnabled = feedback.canUpload
         clearLogin.isEnabled = !feedback.uploading
     }
@@ -310,9 +317,12 @@ class PlatformLoginActivity : Activity() {
         textSize = 15f
         elevation = 0f
         stateListAnimator = null
-        setTextColor(if (primary) Color.WHITE else Color.rgb(100, 87, 80))
+        minHeight = dp(48)
+        setTextColor(if (primary) {
+            if (darkTheme) Color.BLACK else Color.WHITE
+        } else primaryColor)
         background = GradientDrawable().apply {
-            setColor(if (primary) Color.rgb(227, 101, 71) else Color.TRANSPARENT)
+            setColor(if (primary) primaryColor else Color.TRANSPARENT)
             cornerRadius = dp(14).toFloat()
         }
     }

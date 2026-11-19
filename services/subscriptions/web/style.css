@@ -1,0 +1,381 @@
+:root {
+  color-scheme: light dark;
+  --bg: #f6f6f2;
+  --surface: #fff;
+  --ink: #252923;
+  --sub: #62685e;
+  --line: #d8dbd3;
+  --accent: #a43f26;
+  --soft: #f5e7df;
+  --good: #285d44;
+  --pale: #e5f0e9;
+  font-family: Inter, 'Microsoft YaHei', system-ui, sans-serif;
+  color: var(--ink);
+  background: var(--bg);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #181b19;
+    --surface: #212522;
+    --ink: #f0f2ec;
+    --sub: #b8c0b6;
+    --line: #454c46;
+    --accent: #ffb399;
+    --soft: #473328;
+    --good: #a4ddba;
+    --pale: #273f32;
+  }
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+}
+header {
+  min-height: 68px;
+  padding: 10px max(20px, calc((100vw - 1040px) / 2));
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 19px;
+  white-space: nowrap;
+}
+.brand span {
+  display: grid;
+  place-items: center;
+  background: var(--soft);
+  color: var(--accent);
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  font-size: 16px;
+}
+.brand small {
+  font:
+    13px ui-monospace,
+    monospace;
+  color: var(--sub);
+}
+main {
+  max-width: 1080px;
+  margin: auto;
+  padding: 24px 20px 64px;
+}
+h1,
+h2,
+h3,
+p {
+  margin: 0;
+}
+h1 {
+  font-size: clamp(24px, 3vw, 32px);
+  letter-spacing: -0.04em;
+}
+h2 {
+  font-size: 18px;
+}
+h3 {
+  font-size: 16px;
+}
+p,
+li {
+  line-height: 1.6;
+}
+p {
+  margin: 8px 0;
+  color: var(--sub);
+}
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+button {
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 9px 14px;
+  background: var(--accent);
+  color: var(--surface);
+  font-size: 14px;
+  font-weight: 650;
+  cursor: pointer;
+}
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+button.secondary {
+  background: var(--surface);
+  border-color: var(--line);
+  color: var(--ink);
+}
+button.quiet,
+nav button {
+  background: transparent;
+  color: var(--sub);
+}
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+nav {
+  display: flex;
+  gap: 6px;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 26px;
+}
+nav button {
+  border-radius: 0;
+  padding: 12px 16px;
+  border-bottom: 2px solid transparent;
+}
+nav button[aria-current] {
+  border-bottom-color: var(--accent);
+  color: var(--accent);
+}
+.heading,
+.actions,
+.toolbar,
+.entry,
+.dialog-footer {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.heading,
+.entry {
+  justify-content: space-between;
+}
+.heading {
+  margin-bottom: 18px;
+}
+.toolbar {
+  align-items: flex-end;
+  margin: 20px 0;
+}
+.search {
+  flex: 1;
+}
+.toolbar input,
+.toolbar select {
+  margin: 0;
+  min-width: 0;
+}
+.toolbar label {
+  font-size: 12px;
+  color: var(--sub);
+}
+label {
+  display: grid;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 600;
+}
+input:not([type='checkbox']),
+select,
+textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink);
+  min-height: 40px;
+}
+textarea {
+  resize: vertical;
+  min-height: 80px;
+}
+.heading select {
+  width: auto;
+}
+.panel,
+.list {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+}
+.panel {
+  padding: 20px;
+  margin-bottom: 14px;
+}
+.list:empty {
+  display: none;
+}
+.entry {
+  padding: 16px 18px;
+  gap: 12px;
+}
+.entry + .entry {
+  border-top: 1px solid var(--line);
+}
+.entry-main {
+  min-width: 0;
+  flex: 1 1 240px;
+  overflow-wrap: anywhere;
+}
+.entry-main p {
+  font-size: 13px;
+  margin: 6px 0 0;
+}
+.entry .actions button {
+  padding: 7px 10px;
+}
+.pill {
+  display: inline-block;
+  color: var(--good);
+  background: var(--pale);
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 650;
+}
+.pill.attention {
+  color: var(--accent);
+  background: var(--soft);
+}
+.muted,
+.hint {
+  font-size: 13px;
+  color: var(--sub);
+}
+.empty {
+  padding: 26px 18px;
+  color: var(--sub);
+}
+.login {
+  max-width: 440px;
+  margin: 10vh auto;
+  padding: 28px;
+}
+.login label {
+  margin: 20px 0 14px;
+}
+.login button {
+  width: 100%;
+}
+summary {
+  cursor: pointer;
+  font-weight: 650;
+}
+#frame {
+  max-width: 100%;
+  width: 1000px;
+  touch-action: none;
+}
+#remote-text {
+  width: min(25em, 100%);
+}
+output {
+  display: block;
+  overflow-wrap: anywhere;
+  font:
+    16px ui-monospace,
+    monospace;
+}
+dialog {
+  padding: 0;
+  width: min(560px, calc(100vw - 24px));
+  max-height: 85vh;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--surface);
+  color: var(--ink);
+}
+dialog::backdrop {
+  background: #10181080;
+}
+dialog form {
+  padding: 22px;
+}
+#fields,
+.form-group {
+  display: grid;
+  gap: 14px;
+}
+.check {
+  display: flex;
+  align-items: center;
+}
+.check input {
+  width: 17px;
+  height: 17px;
+  accent-color: var(--accent);
+}
+.dialog-footer {
+  justify-content: flex-end;
+  margin-top: 18px;
+}
+.forum {
+  display: grid;
+  gap: 6px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+#form-error,
+#notice {
+  color: var(--accent);
+  white-space: pre-wrap;
+}
+#notice:not(:empty) {
+  position: fixed;
+  bottom: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: 90vw;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  padding: 9px 15px;
+  border-radius: 8px;
+  z-index: 2;
+}
+[hidden] {
+  display: none !important;
+}
+@media (max-width: 600px) {
+  main {
+    padding: 16px 12px 50px;
+  }
+  nav button {
+    flex: 1;
+    padding: 10px 4px;
+  }
+  .entry {
+    align-items: flex-start;
+  }
+  .entry .actions {
+    width: 100%;
+    gap: 6px;
+  }
+  .toolbar {
+    gap: 6px;
+  }
+  .panel {
+    padding: 15px;
+  }
+  .login {
+    margin: 6vh auto;
+  }
+  .search {
+    min-width: 110px;
+  }
+  dialog form {
+    padding: 16px;
+  }
+}

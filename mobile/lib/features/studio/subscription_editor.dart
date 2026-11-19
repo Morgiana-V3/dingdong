@@ -1,3 +1,4 @@
+import '../../ui/theme.dart';
 import '../../ui/selection_sheet.dart';
 import 'package:flutter/material.dart';
 import 'studio_page.dart';
@@ -132,7 +133,7 @@ class _SubscriptionEditorState extends State<SubscriptionEditor> {
         'name': name.text.trim(),
         'pluginId': pluginId,
         'channelId': channelId,
-        'providerId': pluginId == digestPluginId ? '' : providerId,
+        'providerId': providerId,
         'enabled': enabled,
         'onlyChanged': onlyChanged,
         'config': values,
@@ -200,10 +201,7 @@ class _SubscriptionEditorState extends State<SubscriptionEditor> {
     final key = field['key'] as String;
     final label = field['label'] as String;
     if (field['type'] == 'account') {
-      return const Padding(
-        padding: EdgeInsets.only(bottom: 10),
-        child: Text('使用服务器已授权的账号；保存任务后可在账号页管理登录。'),
-      );
+      return const SizedBox.shrink();
     }
     if (field['type'] == 'boolean') {
       return SwitchListTile(
@@ -339,8 +337,19 @@ class _SubscriptionEditorState extends State<SubscriptionEditor> {
         controller: fields[key],
         decoration: InputDecoration(
           labelText: label,
-          helperText: field['help'] as String?,
-          helperMaxLines: 3,
+          suffixIcon: (field['help'] as String? ?? '').isEmpty
+              ? null
+              : IconButton(
+                  tooltip: '$label说明',
+                  icon: const Icon(Icons.help_outline, size: 20),
+                  onPressed: () => showAppSheet<void>(
+                    context: context,
+                    builder: (_) => SheetDialog(
+                      title: Text(label),
+                      content: Text(field['help'] as String),
+                    ),
+                  ),
+                ),
         ),
         minLines: field['type'] == 'textarea' ? 3 : 1,
         maxLines: field['type'] == 'textarea' ? 6 : 1,
@@ -441,7 +450,7 @@ class _SubscriptionEditorState extends State<SubscriptionEditor> {
             absorbing: busy,
             child: ListView(
               key: const ValueKey('subscription-form-list'),
-              padding: const EdgeInsets.all(14),
+              padding: pageInsets(context),
               children: [
                 if (busy) const LinearProgressIndicator(),
                 if (error != null)
@@ -492,14 +501,49 @@ class _SubscriptionEditorState extends State<SubscriptionEditor> {
                     label: const Text('插件说明'),
                   ),
                 ),
-                if (pluginId != digestPluginId)
-                  choice(
-                    'AI 配置',
-                    providerId,
-                    studioItems(snapshotData['providers']),
-                    (v) => providerId = v,
-                    optional: true,
+                const SizedBox(height: 12),
+                Text('订阅内容', style: Theme.of(context).textTheme.titleMedium),
+                const SizedBox(height: 12),
+                for (final field in studioItems(plugin['fields'])) ...[
+                  pluginField(field),
+                  if (pluginId == 'bilibili-videos' && field['key'] == 'upIds')
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 20),
+                      child: OutlinedButton.icon(
+                        icon: const Icon(Icons.people_outline),
+                        label: const Text('从关注列表选择 UP 主'),
+                        onPressed: () async {
+                          final result = await Navigator.push<String>(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => BilibiliFollowings(
+                                selected: fields['upIds']!.text,
+                              ),
+                            ),
+                          );
+                          if (result != null && mounted) {
+                            setState(() => fields['upIds']!.text = result);
+                          }
+                        },
+                      ),
+                    ),
+                ],
+                const SizedBox(height: 16),
+                const Divider(),
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  child: Text(
+                    '执行与推送',
+                    style: Theme.of(context).textTheme.titleMedium,
                   ),
+                ),
+                choice(
+                  'AI 配置',
+                  providerId,
+                  studioItems(snapshotData['providers']),
+                  (v) => providerId = v,
+                  optional: true,
+                ),
                 if ((plugin['capabilities'] as List? ?? []).contains(
                       'ai.tools',
                     ) &&
@@ -562,32 +606,6 @@ class _SubscriptionEditorState extends State<SubscriptionEditor> {
                   value: onlyChanged,
                   onChanged: (v) => setState(() => onlyChanged = v),
                 ),
-                const Divider(),
-                const SizedBox(height: 10),
-                for (final field in studioItems(plugin['fields'])) ...[
-                  pluginField(field),
-                  if (pluginId == 'bilibili-videos' && field['key'] == 'upIds')
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 20),
-                      child: OutlinedButton.icon(
-                        icon: const Icon(Icons.people_outline),
-                        label: const Text('从关注列表选择 UP 主'),
-                        onPressed: () async {
-                          final result = await Navigator.push<String>(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => BilibiliFollowings(
-                                selected: fields['upIds']!.text,
-                              ),
-                            ),
-                          );
-                          if (result != null && mounted) {
-                            setState(() => fields['upIds']!.text = result);
-                          }
-                        },
-                      ),
-                    ),
-                ],
                 const SizedBox(height: 20),
                 FilledButton(
                   onPressed: busy ? null : submit,

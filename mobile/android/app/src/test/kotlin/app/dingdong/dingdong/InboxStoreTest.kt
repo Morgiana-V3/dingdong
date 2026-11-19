@@ -50,6 +50,24 @@ class InboxStoreTest {
         assertEquals(1, store.list(after = 1000, before = 1001).size)
     }
 
+    @Test fun onlyVisibleMessagesWithInlineImagesSupplyCoverDocuments() {
+        val html = "<img src='data:image/png;base64,aGVsbG8='>"
+        val id = store.save(message(content = html), "http://example.test").first
+        assertEquals(html, store.previewDocument(id))
+        assertFalse(store.list().first().containsKey("content"))
+        store.update(id, "delete", true)
+        assertNull(store.previewDocument(id))
+        store.update(id, "restore", true)
+        assertEquals(html, store.previewDocument(id))
+        val article = "<main><article class='post'><div class='post-content'><h2>历史帖子</h2></div></article></main>"
+        assertTrue(store.importMessage(message("older", article)))
+        assertEquals(article, store.previewDocument("older"))
+        val external = store.save(message("remote", "<img src='https://example.test/image'>"), "http://example.test").first
+        assertNull(store.previewDocument(external))
+        assertTrue(store.importMessage(message("plain", html).put("format", "text")))
+        assertNull(store.previewDocument("plain"))
+    }
+
     @Test fun deletionCanBeUndoneBeforeExpiryAndNeverRedownloaded() {
         val id = store.save(message(), "http://example.test").first
         store.batch(listOf(id), "read", true)

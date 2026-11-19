@@ -3,6 +3,65 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../data/inbox_repository.dart';
 import '../../ui/theme.dart';
+import '../../ui/connection_badge.dart';
+import 'dart:async';
+
+class ServerConnectionPage extends StatefulWidget {
+  const ServerConnectionPage({
+    super.key,
+    required this.repository,
+    required this.settings,
+  });
+  final InboxRepository repository;
+  final Map<String, dynamic> settings;
+
+  @override
+  State<ServerConnectionPage> createState() => _ServerConnectionPageState();
+}
+
+class _ServerConnectionPageState extends State<ServerConnectionPage> {
+  late Map<String, dynamic> settings = widget.settings;
+  Timer? timer;
+
+  @override
+  void initState() {
+    super.initState();
+    timer = Timer.periodic(const Duration(seconds: 3), (_) {
+      if ((ModalRoute.of(context)?.isCurrent ?? false) &&
+          WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed) {
+        refresh();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    timer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> refresh() async {
+    try {
+      final saved = await widget.repository.settings();
+      if (mounted) setState(() => settings = saved);
+    } catch (_) {
+      if (mounted) {
+        setState(() => settings = {...settings, 'status': '无法读取连接状态'});
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: const Text('服务器连接')),
+    body: SettingsPage(
+      repository: widget.repository,
+      settings: settings,
+      connectionOnly: true,
+      onChanged: refresh,
+    ),
+  );
+}
 
 bool isHttpsUpgrade(String previous, String next) {
   final old = Uri.tryParse(previous);
@@ -72,6 +131,7 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Future<void> _connect() async {
+    if (busy) return;
     if (!form.currentState!.validate()) return;
     setState(() {
       busy = true;
@@ -86,7 +146,9 @@ class _SettingsPageState extends State<SettingsPage> {
         token.text.trim(),
         directConnection: directConnection,
       );
+      if (!mounted) return;
       token.clear();
+      if (mounted) setState(() => result = '连接设置已保存');
       widget.onChanged();
     } catch (_) {
       if (mounted) setState(() => error = '无法连接，请检查服务器地址和接收密钥');
@@ -100,10 +162,11 @@ class _SettingsPageState extends State<SettingsPage> {
     setState(() {
       busy = true;
       error = null;
+      result = null;
     });
     try {
       await action();
-      widget.onChanged();
+      if (mounted) widget.onChanged();
     } on PlatformException catch (failure) {
       if (mounted) setState(() => error = failure.message ?? '操作未完成，请重试');
     } catch (_) {
@@ -153,29 +216,21 @@ class _SettingsPageState extends State<SettingsPage> {
     final colors = Theme.of(context).colorScheme;
     final status = widget.settings['status'] as String? ?? '未连接';
     return ListView(
-      padding: const EdgeInsets.fromLTRB(22, 12, 22, 32),
+      padding: pageInsets(context, bottom: 32),
       children: [
         if (widget.connectionOnly) ...[
-          Row(
-            children: [
-              Icon(Icons.dns_outlined, color: colors.primary),
-              const SizedBox(width: 10),
-              const Text(
-                '服务器',
-                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 18),
-              ),
-              const Spacer(),
-              Flexible(
-                child: Text(
-                  status,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: colors.onSurfaceVariant,
-                  ),
-                ),
-              ),
-            ],
+          Align(
+            alignment: Alignment.centerLeft,
+            child: ConnectionBadge(status: status),
           ),
+          if (status != '已连接' && status != '未连接')
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Text(
+                status,
+                style: TextStyle(color: colors.onSurfaceVariant),
+              ),
+            ),
           if ((widget.settings['lastConnectedAt'] as int? ?? 0) > 0)
             Padding(
               padding: const EdgeInsets.only(top: 8),
@@ -201,6 +256,7 @@ class _SettingsPageState extends State<SettingsPage> {
               children: [
                 TextFormField(
                   controller: address,
+                  enabled: !busy,
                   onChanged: (_) => setState(() {}),
                   autocorrect: false,
                   keyboardType: TextInputType.url,
@@ -239,11 +295,15 @@ class _SettingsPageState extends State<SettingsPage> {
                 const SizedBox(height: 16),
                 TextFormField(
                   controller: token,
+                  enabled: !busy,
                   obscureText: !reveal,
                   autocorrect: false,
                   enableSuggestions: false,
                   decoration: InputDecoration(
-                    labelText: '接收密钥',
+                    labelText:
+                        widget.settings['hasToken'] == true && usesSavedAddress
+                        ? '接收密钥 · 已保存'
+                        : '接收密钥',
                     hintText: widget.settings['hasToken'] == true
                         ? '留空保留当前密钥'
                         : '填写服务器的接收密钥',
@@ -282,99 +342,175 @@ class _SettingsPageState extends State<SettingsPage> {
                   },
                 ),
                 const SizedBox(height: 12),
-                Text(
-                  '公网服务器支持 HTTPS 时，建议使用加密连接，避免代理或网络中间环节干扰消息长连接。同一服务器从 HTTP 升级到 HTTPS 可保留密钥和消息记录。',
-                  style: TextStyle(
-                    fontSize: 12,
-                    height: 1.6,
-                    color: colors.onSurfaceVariant,
+                SettingsExpansion(
+                  title: const Text('网络与诊断'),
+                  subtitle: Text(
+                    directConnection !=
+                            (widget.settings['directConnection'] == true)
+                        ? '直连设置已修改，保存后生效'
+                        : directConnection
+                        ? '服务器直连已开启'
+                        : '直连、连接检查与 HTTPS 说明',
                   ),
+                  children: [
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('服务器直连'),
+                      subtitle: const Text('仅服务器连接绕过代理，保存后生效。'),
+                      value: directConnection,
+                      onChanged: busy
+                          ? null
+                          : (value) => setState(() => directConnection = value),
+                    ),
+                    TextButton.icon(
+                      onPressed: busy
+                          ? null
+                          : () => _perform(() async {
+                              final checked = await widget.repository
+                                  .diagnose();
+                              if (mounted) setState(() => diagnostic = checked);
+                            }),
+                      icon: const Icon(Icons.network_check),
+                      label: const Text('检查已保存的连接'),
+                    ),
+                    if (diagnostic != null)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        child: SelectableText(diagnostic!),
+                      ),
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 16),
+                      child: Text(
+                        '服务器支持 HTTPS 时建议使用加密连接。同一主机从标准 HTTP 升级到 HTTPS 可保留密钥。直连是否可用取决于 VPN 设置。',
+                        style: TextStyle(
+                          fontSize: 12,
+                          height: 1.6,
+                          color: colors.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 20),
-                SwitchListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text('服务器直连'),
-                  subtitle: const Text(
-                    '开启后，仅叮咚服务器使用 Wi-Fi 或移动网络直连，外部 App 仍使用原有代理。修改后点击保存。',
-                  ),
-                  value: directConnection,
-                  onChanged: busy
-                      ? null
-                      : (value) => setState(() => directConnection = value),
-                ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 16),
                 FilledButton(
                   onPressed: busy ? null : _connect,
-                  child: Text(busy ? '正在保存…' : '保存并连接'),
+                  child: Text(
+                    busy ? '正在保存…' : '保存并连接',
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
                 ),
-                if (widget.settings['enabled'] == true)
-                  TextButton(
-                    onPressed: () => _perform(widget.repository.disconnect),
+                if (widget.settings['enabled'] == true) ...[
+                  const SizedBox(height: 8),
+                  OutlinedButton(
+                    onPressed: busy
+                        ? null
+                        : () => _perform(widget.repository.disconnect),
                     child: const Text('暂停接收'),
                   ),
+                ],
               ],
             ),
           ),
-          TextButton.icon(
-            onPressed: busy
-                ? null
-                : () => _perform(() async {
-                    final checked = await widget.repository.diagnose();
-                    if (mounted) setState(() => diagnostic = checked);
-                  }),
-            icon: const Icon(Icons.network_check),
-            label: Text(busy ? '正在处理…' : '检查已保存的连接'),
-          ),
-          if (diagnostic != null)
+          if (result != null)
             Padding(
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              child: Text(diagnostic!),
+              padding: const EdgeInsets.only(top: 12),
+              child: Text(result!),
             ),
           if (error != null)
             InlineNotice(error!, onDismiss: () => setState(() => error = null)),
-          const SizedBox(height: 28),
-          const Divider(),
-          const SizedBox(height: 12),
         ],
         if (!widget.connectionOnly) ...[
           if (error != null)
             InlineNotice(error!, onDismiss: () => setState(() => error = null)),
-          ListTile(
-            contentPadding: EdgeInsets.zero,
-            leading: const Icon(Icons.notifications_none_rounded),
-            title: const Text('通知与后台运行'),
-            subtitle: Text(
-              widget.settings['notifications'] == false
-                  ? '通知权限未开启，点击前往系统设置'
-                  : '允许后台运行，并将省电策略设为不限制',
+          const _SettingsHeading('连接与通知'),
+          Card(
+            clipBehavior: Clip.antiAlias,
+            child: Column(
+              children: [
+                ListTile(
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 2,
+                  ),
+                  leading: const Icon(Icons.dns_outlined),
+                  title: const Text('服务器连接'),
+                  subtitle: Text(
+                    (widget.settings['endpoint'] as String? ?? '').isEmpty
+                        ? '设置地址和接收密钥'
+                        : widget.settings['endpoint'] as String,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () async {
+                    await Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => ServerConnectionPage(
+                          repository: widget.repository,
+                          settings: widget.settings,
+                        ),
+                      ),
+                    );
+                    if (mounted) widget.onChanged();
+                  },
+                ),
+                const Divider(height: 1, indent: 54),
+                ListTile(
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 2,
+                  ),
+                  leading: const Icon(Icons.notifications_none_rounded),
+                  title: const Text('通知与后台运行'),
+                  subtitle: Text(
+                    widget.settings['notifications'] == false
+                        ? '通知权限未开启，点击前往系统设置'
+                        : '系统通知、后台运行与省电设置',
+                  ),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => _perform(widget.repository.systemSettings),
+                ),
+              ],
             ),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => _perform(widget.repository.systemSettings),
           ),
-          const Divider(),
-          ListTile(
-            contentPadding: EdgeInsets.zero,
-            leading: const Icon(Icons.file_download_outlined),
-            title: const Text('导出本地消息'),
-            subtitle: const Text('包含正文、图片、收藏和来源静默设置，不包含密钥'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: busy
-                ? null
-                : () => _perform(() async {
-                    final exported = await widget.repository.export();
-                    if (exported && mounted) {
-                      setState(() => result = '已导出到所选位置');
-                    }
-                  }),
-          ),
-          const Divider(),
-          ListTile(
-            contentPadding: EdgeInsets.zero,
-            leading: const Icon(Icons.file_upload_outlined),
-            title: const Text('导入备份'),
-            subtitle: const Text('合并消息，跳过重复内容'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: busy ? null : _restore,
+          const SizedBox(height: 20),
+          const _SettingsHeading('本地备份'),
+          Card(
+            clipBehavior: Clip.antiAlias,
+            child: Column(
+              children: [
+                ListTile(
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 2,
+                  ),
+                  leading: const Icon(Icons.file_download_outlined),
+                  title: const Text('导出本地消息'),
+                  subtitle: const Text('备份消息、图片与收藏'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: busy
+                      ? null
+                      : () => _perform(() async {
+                          final exported = await widget.repository.export();
+                          if (exported && mounted) {
+                            setState(() => result = '已导出到所选位置');
+                          }
+                        }),
+                ),
+                const Divider(height: 1, indent: 54),
+                ListTile(
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 2,
+                  ),
+                  leading: const Icon(Icons.file_upload_outlined),
+                  title: const Text('导入备份'),
+                  subtitle: const Text('合并消息，跳过重复内容'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: busy ? null : _restore,
+                ),
+              ],
+            ),
           ),
           if (result != null)
             Padding(
@@ -391,7 +527,7 @@ class _SettingsPageState extends State<SettingsPage> {
           ),
           const SizedBox(height: 8),
           Text(
-            '消息保存到手机后，服务器清理正文。换机或卸载前请导出。已开启接收时，重启后会尝试自动恢复；小米系统需允许自启动和后台运行。',
+            '消息保存在本机，换机或卸载前请导出备份。',
             style: TextStyle(
               fontSize: 12,
               height: 1.7,
@@ -402,4 +538,21 @@ class _SettingsPageState extends State<SettingsPage> {
       ],
     );
   }
+}
+
+class _SettingsHeading extends StatelessWidget {
+  const _SettingsHeading(this.label);
+  final String label;
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.fromLTRB(4, 0, 4, 8),
+    child: Text(
+      label,
+      style: TextStyle(
+        fontWeight: FontWeight.w700,
+        fontSize: 13,
+        color: Theme.of(context).colorScheme.onSurfaceVariant,
+      ),
+    ),
+  );
 }

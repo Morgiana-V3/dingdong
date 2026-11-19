@@ -197,6 +197,32 @@ class _InboxPageState extends State<InboxPage> with WidgetsBindingObserver {
     });
   }
 
+  Future<void> _configureConnection() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => ServerConnectionPage(
+          repository: widget.repository,
+          settings: settings,
+        ),
+      ),
+    );
+    if (mounted) await _refresh();
+  }
+
+  void _clearFilters() {
+    searchDebounce?.cancel();
+    searchRevision++;
+    searchController.clear();
+    setState(() {
+      query = '';
+      dateRange = null;
+      source = null;
+      filter = 0;
+      searching = false;
+      selectedIds.clear();
+    });
+  }
+
   Future<void> _search() async {
     final revision = ++searchRevision;
     try {
@@ -350,7 +376,6 @@ class _InboxPageState extends State<InboxPage> with WidgetsBindingObserver {
       int target, {
       int messageFilter = 0,
       int? count,
-      Widget? trailing,
     }) {
       final selected =
           page == target &&
@@ -369,7 +394,7 @@ class _InboxPageState extends State<InboxPage> with WidgetsBindingObserver {
             label,
             style: const TextStyle(fontWeight: FontWeight.w600),
           ),
-          trailing: trailing ?? (count == null ? null : Text('$count')),
+          trailing: count == null ? null : Text('$count'),
           onTap: () => _navigate(target, messageFilter: messageFilter),
         ),
       );
@@ -447,6 +472,9 @@ class _InboxPageState extends State<InboxPage> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
+    final allSelectedStarred = messages
+        .where((message) => selectedIds.contains(message.id))
+        .every((message) => message.starred);
     final title = page == 0
         ? (source ?? ['收件箱', '未读消息', '收藏'][filter])
         : ['收件箱', '来源', '设置'][page];
@@ -496,17 +524,37 @@ class _InboxPageState extends State<InboxPage> with WidgetsBindingObserver {
               if (page == 0 && selectedIds.isEmpty)
                 SheetMenuButton<String>(
                   tooltip: '消息操作',
-                  onSelected: (_) => _batch(
-                    'read',
-                    targets: visibleMessages
-                        .map((message) => message.id)
-                        .toList(),
-                  ),
+                  onSelected: (action) {
+                    if (action == 'select') {
+                      setState(
+                        () => selectedIds.addAll(
+                          visibleMessages.map((message) => message.id),
+                        ),
+                      );
+                    } else {
+                      _batch(
+                        'read',
+                        targets: visibleMessages
+                            .where((message) => !message.isRead)
+                            .map((message) => message.id)
+                            .toList(),
+                      );
+                    }
+                  },
                   choices: [
-                    const SheetChoice(
+                    SheetChoice(
+                      value: 'select',
+                      label: '全选当前列表',
+                      icon: Icons.checklist_rounded,
+                      enabled: visibleMessages.isNotEmpty && !acting,
+                    ),
+                    SheetChoice(
                       value: 'read',
                       label: '当前列表全部已读',
                       icon: Icons.done_all,
+                      enabled:
+                          visibleMessages.any((message) => !message.isRead) &&
+                          !acting,
                     ),
                   ],
                 ),
@@ -538,12 +586,7 @@ class _InboxPageState extends State<InboxPage> with WidgetsBindingObserver {
                     child: KeyedSubtree(
                       key: ValueKey('$page/$filter/$source'),
                       child: switch (page) {
-                        0 => ColoredBox(
-                          color: Theme.of(context).brightness == Brightness.dark
-                              ? colors.surface
-                              : const Color(0xFFF3F4F5),
-                          child: _inbox(),
-                        ),
+                        0 => ColoredBox(color: colors.surface, child: _inbox()),
                         1 => _sources(),
                         _ => SettingsPage(
                           repository: widget.repository,
@@ -574,16 +617,14 @@ class _InboxPageState extends State<InboxPage> with WidgetsBindingObserver {
                           label: const Text('已读'),
                         ),
                         TextButton.icon(
-                          onPressed: acting ? null : () => _batch('starred'),
-                          icon: const Icon(Icons.bookmark_add_outlined),
-                          label: const Text('收藏'),
-                        ),
-                        TextButton.icon(
                           onPressed: acting
                               ? null
-                              : () => _batch('starred', value: false),
-                          icon: const Icon(Icons.bookmark_remove_outlined),
-                          label: const Text('取消收藏'),
+                              : () => _batch(
+                                  'starred',
+                                  value: !allSelectedStarred,
+                                ),
+                          icon: const Icon(Icons.bookmark_border_rounded),
+                          label: Text(allSelectedStarred ? '取消收藏' : '收藏'),
                         ),
                         TextButton.icon(
                           onPressed: acting ? null : () => _batch('delete'),
@@ -602,37 +643,99 @@ class _InboxPageState extends State<InboxPage> with WidgetsBindingObserver {
   Widget _inbox() {
     final colors = Theme.of(context).colorScheme;
     final visible = visibleMessages;
+    final filtered = query.isNotEmpty || dateRange != null || source != null;
+    final configured = (settings['endpoint'] as String? ?? '').isNotEmpty;
+    final emptyTitle = filtered
+        ? '没有符合条件的消息'
+        : switch (filter) {
+            1 => '没有未读消息',
+            2 => '还没有收藏',
+            _ => '还没有消息',
+          };
+    final emptySubtitle = filtered
+        ? '试试其他关键词，或清除筛选条件。'
+        : filter == 2
+        ? '阅读消息时可收藏，或长按消息批量收藏。'
+        : filter == 1
+        ? '已读完当前所有消息。'
+        : configured
+        ? '新消息会保存在这里，随时离线阅读。'
+        : '连接服务器，接收脚本发送的内容。';
     return Column(
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+          padding: pageInsets(context, bottom: 4),
           child: TextField(
             controller: searchController,
             decoration: InputDecoration(
-              hintText: '搜索消息正文、标题或来源',
-              suffixIcon: IconButton(
-                tooltip: '按日期筛选',
-                icon: const Icon(Icons.date_range_outlined),
-                onPressed: _pickDates,
+              hintText: '搜索消息',
+              isDense: true,
+              contentPadding: const EdgeInsets.symmetric(vertical: 12),
+              suffixIcon: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (query.isNotEmpty)
+                    IconButton(
+                      tooltip: '清空搜索',
+                      icon: const Icon(Icons.close),
+                      onPressed: () {
+                        searchController.clear();
+                        _queryChanged('');
+                      },
+                    ),
+                  IconButton(
+                    tooltip: '按日期筛选',
+                    icon: Icon(
+                      Icons.date_range_outlined,
+                      color: dateRange != null ? colors.primary : null,
+                    ),
+                    onPressed: _pickDates,
+                  ),
+                ],
               ),
               prefixIcon: Icon(Icons.search, size: 21),
             ),
             onChanged: _queryChanged,
           ),
         ),
-        if (dateRange != null)
+        if (dateRange != null || source != null)
           Align(
             alignment: Alignment.centerLeft,
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: InputChip(
-                label: Text(
-                  '${dateRange!.start.month}/${dateRange!.start.day} — ${dateRange!.end.month}/${dateRange!.end.day}',
-                ),
-                onDeleted: () {
-                  setState(() => dateRange = null);
-                  _search();
-                },
+              child: Wrap(
+                spacing: 8,
+                children: [
+                  if (source != null)
+                    InputChip(
+                      label: ConstrainedBox(
+                        constraints: BoxConstraints(
+                          maxWidth: MediaQuery.sizeOf(context).width - 100,
+                        ),
+                        child: Text(source!, overflow: TextOverflow.ellipsis),
+                      ),
+                      onDeleted: () => setState(() => source = null),
+                    ),
+                  if (dateRange != null)
+                    InputChip(
+                      tooltip:
+                          '${dateRange!.start.year}/${dateRange!.start.month}/${dateRange!.start.day} — ${dateRange!.end.year}/${dateRange!.end.month}/${dateRange!.end.day}',
+                      label: ConstrainedBox(
+                        constraints: BoxConstraints(
+                          maxWidth: MediaQuery.sizeOf(context).width - 100,
+                        ),
+                        child: Text(
+                          '${dateRange!.start.year}/${dateRange!.start.month}/${dateRange!.start.day} — ${dateRange!.end.year}/${dateRange!.end.month}/${dateRange!.end.day}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      onDeleted: () {
+                        setState(() => dateRange = null);
+                        _search();
+                      },
+                    ),
+                ],
               ),
             ),
           ),
@@ -641,16 +744,19 @@ class _InboxPageState extends State<InboxPage> with WidgetsBindingObserver {
               ? const Center(child: CircularProgressIndicator())
               : visible.isEmpty
               ? _empty(
-                  messages.isEmpty ? '还没有消息' : '没有符合条件的消息',
-                  messages.isEmpty ? '连接服务器后，脚本发送的内容会出现在这里。' : '试试其他关键词或筛选条件。',
-                  action: messages.isEmpty
-                      ? () => setState(() => page = 2)
-                      : null,
+                  emptyTitle,
+                  emptySubtitle,
+                  action: filtered || filter != 0
+                      ? _clearFilters
+                      : configured
+                      ? null
+                      : _configureConnection,
+                  actionLabel: filtered || filter != 0 ? '查看全部消息' : '连接服务器',
                 )
               : RefreshIndicator(
                   onRefresh: _refresh,
                   child: ListView.builder(
-                    padding: const EdgeInsets.only(bottom: 16),
+                    padding: pageInsets(context, side: 14, top: 0, bottom: 16),
                     keyboardDismissBehavior:
                         ScrollViewKeyboardDismissBehavior.onDrag,
                     physics: const AlwaysScrollableScrollPhysics(),
@@ -668,7 +774,7 @@ class _InboxPageState extends State<InboxPage> with WidgetsBindingObserver {
                         children: [
                           if (showDate)
                             Padding(
-                              padding: const EdgeInsets.fromLTRB(22, 16, 22, 8),
+                              padding: const EdgeInsets.fromLTRB(3, 15, 3, 7),
                               child: Text(
                                 date == DateUtils.dateOnly(DateTime.now())
                                     ? '今天'
@@ -680,26 +786,24 @@ class _InboxPageState extends State<InboxPage> with WidgetsBindingObserver {
                                 ),
                               ),
                             ),
-                          Padding(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 16,
-                              vertical: 6,
-                            ),
-                            child: MessageTile(
-                              key: ValueKey(message.id),
-                              message: message,
-                              onTap: () {
-                                if (selectedIds.isEmpty) {
-                                  _open(message);
-                                } else {
-                                  _toggleSelection(message.id);
-                                }
-                              },
-                              onLongPress: () => _toggleSelection(message.id),
-                              selecting: selectedIds.isNotEmpty,
-                              selected: selectedIds.contains(message.id),
-                            ),
+                          MessageTile(
+                            key: ValueKey(message.id),
+                            message: message,
+                            preview: message.format == 'text'
+                                ? null
+                                : widget.repository.preview(message),
+                            onTap: () {
+                              if (selectedIds.isEmpty) {
+                                _open(message);
+                              } else {
+                                _toggleSelection(message.id);
+                              }
+                            },
+                            onLongPress: () => _toggleSelection(message.id),
+                            selecting: selectedIds.isNotEmpty,
+                            selected: selectedIds.contains(message.id),
                           ),
+                          const SizedBox(height: 8),
                         ],
                       );
                     },
@@ -710,7 +814,12 @@ class _InboxPageState extends State<InboxPage> with WidgetsBindingObserver {
     );
   }
 
-  Widget _empty(String title, String subtitle, {VoidCallback? action}) {
+  Widget _empty(
+    String title,
+    String subtitle, {
+    VoidCallback? action,
+    String actionLabel = '连接服务器',
+  }) {
     final child = Center(
       child: SingleChildScrollView(
         child: Padding(
@@ -743,7 +852,7 @@ class _InboxPageState extends State<InboxPage> with WidgetsBindingObserver {
               ),
               if (action != null) ...[
                 const SizedBox(height: 22),
-                FilledButton(onPressed: action, child: const Text('连接服务器')),
+                FilledButton(onPressed: action, child: Text(actionLabel)),
               ],
             ],
           ),
@@ -760,7 +869,7 @@ class _InboxPageState extends State<InboxPage> with WidgetsBindingObserver {
       ..sort();
     if (sources.isEmpty) return _empty('还没有来源', '收到消息后，按脚本填写的来源自动分组。');
     return ListView.separated(
-      padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 10),
+      padding: pageInsets(context),
       itemCount: sources.length,
       separatorBuilder: (_, index) => const Divider(height: 1),
       itemBuilder: (context, index) {
@@ -769,9 +878,8 @@ class _InboxPageState extends State<InboxPage> with WidgetsBindingObserver {
             .where((message) => message.source == name)
             .length;
         return ListTile(
-          contentPadding: const EdgeInsets.symmetric(vertical: 10),
-          leading: SourceAvatar(name),
-          title: Text(name),
+          contentPadding: const EdgeInsets.symmetric(vertical: 3),
+          title: Text(name, maxLines: 2, overflow: TextOverflow.ellipsis),
           subtitle: Text('$count 条消息'),
           trailing: IconButton(
             tooltip: muted.contains(name) ? '开启此来源通知' : '静默接收此来源',

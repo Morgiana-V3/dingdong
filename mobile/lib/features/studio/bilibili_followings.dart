@@ -1,3 +1,4 @@
+import '../../ui/theme.dart';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -70,7 +71,7 @@ class _BilibiliFollowingsState extends State<BilibiliFollowings> {
       ],
     ),
     body: ListView(
-      padding: const EdgeInsets.all(20),
+      padding: pageInsets(context),
       children: [
         if (busy) const LinearProgressIndicator(),
         if (error != null)

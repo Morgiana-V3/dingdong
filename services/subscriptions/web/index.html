@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>叮咚 · 服务器管理台</title>
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <header>
+      <strong class="brand"
+        ><span aria-hidden="true">叮</span>叮咚 <small>Node</small></strong
+      ><button id="signout" class="quiet" hidden>退出管理台</button>
+    </header>
+    <main>
+      <section id="auth" class="login panel">
+        <h1>登录服务器管理台</h1>
+        <p>使用服务器数据目录中的 <code>admin.key</code> 登录。</p>
+        <form id="login-form">
+          <label
+            >管理密钥<input
+              id="admin-key"
+              type="password"
+              autocomplete="current-password"
+              required /></label
+          ><button>登录</button>
+        </form>
+      </section>
+      <div id="workspace" hidden>
+        <nav aria-label="管理台导航">
+          <button data-tab="tasks" aria-current="page">订阅任务</button
+          ><button data-tab="accounts">平台账号</button
+          ><button data-tab="providers">AI 服务</button>
+        </nav>
+        <section id="tasks" class="view">
+          <div class="heading">
+            <h1>订阅任务</h1>
+            <button id="new-task">＋ 添加任务</button>
+          </div>
+          <div class="toolbar">
+            <label class="search"
+              >搜索任务<input
+                id="search"
+                type="search"
+                placeholder="输入任务或插件名称" /></label
+            ><label
+              >状态<select id="filter">
+                <option value="">全部状态</option>
+                <option value="on">已开启</option>
+                <option value="off">已暂停</option>
+                <option value="attention">待处理</option>
+              </select></label
+            ><button id="refresh" class="secondary">刷新</button>
+          </div>
+          <div id="task-list" class="list"></div>
+          <p id="task-count" class="muted"></p>
+        </section>
+        <section id="providers" class="view" hidden>
+          <div class="heading">
+            <h1>AI 服务</h1>
+            <button id="new-provider">＋ 添加服务</button>
+          </div>
+          <div id="provider-list" class="list"></div>
+        </section>
+        <section id="accounts" class="view" hidden>
+          <div class="heading">
+            <h1>平台账号</h1>
+            <select id="platform" aria-label="选择平台">
+              <option value="bilibili">哔哩哔哩</option>
+              <option value="x">X</option>
+              <option value="xiaohongshu">小红书</option>
+            </select>
+          </div>
+          <div class="panel">
+            <div class="heading">
+              <h2>账号状态</h2>
+              <span class="pill" id="badge">尚未验证</span>
+            </div>
+            <p id="dependencies"></p>
+            <p id="status"></p>
+            <strong id="account"></strong>
+            <ul id="samples"></ul>
+            <div class="actions">
+              <button id="open-browser">打开官方登录页</button
+              ><button id="verify" class="secondary">验证账号与采集</button
+              ><button id="logout" class="quiet">清除平台会话</button>
+            </div>
+          </div>
+          <details class="panel">
+            <summary>通过手机授权</summary>
+            <p>
+              在叮咚 App 打开「订阅管理 →
+              所需账号」，登录后选择「授权给当前服务器」。
+            </p>
+            <div id="legacy-pair">
+              <p>旧版 B 站客户端使用一次性配对码，10 分钟有效。</p>
+              <button id="pair" class="secondary">生成配对码</button
+              ><output id="pair-code"></output>
+            </div>
+          </details>
+          <div id="browser" class="panel" hidden>
+            <h2>服务器浏览器</h2>
+            <p>
+              点击画面中的输入框，在下方输入文字后发送。扫码和验证码在官方页面完成。
+            </p>
+            <img id="frame" alt="服务器浏览器画面，点击可操作" />
+            <div class="actions">
+              <input
+                id="remote-text"
+                type="password"
+                autocomplete="off"
+                aria-label="发送到官方页面的文字"
+              /><button id="send-text">发送文字</button
+              ><button data-key="ControlOrMeta+A" class="secondary">全选</button
+              ><button data-key="Backspace" class="secondary">删除</button
+              ><button data-key="Tab" class="secondary">下一项</button
+              ><button data-key="Enter" class="secondary">回车</button>
+            </div>
+          </div>
+        </section>
+      </div>
+      <p id="notice" role="status"></p>
+    </main>
+    <dialog id="editor" aria-labelledby="dialog-title">
+      <form id="editor-form">
+        <div class="heading">
+          <h2 id="dialog-title"></h2>
+          <button
+            type="button"
+            class="quiet"
+            id="close-dialog"
+            aria-label="关闭"
+          >
+            关闭
+          </button>
+        </div>
+        <div id="fields"></div>
+        <p id="form-error" role="alert"></p>
+        <div class="dialog-footer"><button id="save">保存</button></div>
+      </form>
+    </dialog>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

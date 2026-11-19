@@ -1,8 +1,13 @@
 import 'package:flutter/material.dart';
 
 class SubscriptionStyle extends StatelessWidget {
-  const SubscriptionStyle({super.key, required this.child});
+  const SubscriptionStyle({
+    super.key,
+    required this.child,
+    this.compact = false,
+  });
   final Widget child;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
@@ -12,33 +17,48 @@ class SubscriptionStyle extends StatelessWidget {
       borderRadius: BorderRadius.circular(10),
     );
     ButtonStyle button(Color? background) => TextButton.styleFrom(
-      minimumSize: const Size(40, 36),
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+      minimumSize: Size(48, compact ? 36 : 52),
+      padding: EdgeInsets.symmetric(
+        horizontal: compact ? 12 : 16,
+        vertical: compact ? 0 : 12,
+      ),
+      textStyle: base.textTheme.labelLarge?.copyWith(
+        fontSize: compact ? 13 : 15,
+        fontWeight: FontWeight.w600,
+      ),
       shape: shape,
       backgroundColor: background,
     );
     return Theme(
       data: base.copyWith(
-        visualDensity: VisualDensity.compact,
+        visualDensity: compact ? VisualDensity.compact : VisualDensity.standard,
         textTheme: base.textTheme
             .copyWith(
-              titleLarge: const TextStyle(
+              titleLarge: base.textTheme.titleLarge?.copyWith(
                 fontSize: 17,
                 fontWeight: FontWeight.w700,
               ),
-              titleMedium: const TextStyle(
+              titleMedium: base.textTheme.titleMedium?.copyWith(
                 fontSize: 14,
                 fontWeight: FontWeight.w700,
               ),
-              bodyLarge: const TextStyle(fontSize: 14, height: 1.4),
-              bodyMedium: const TextStyle(fontSize: 13, height: 1.4),
-              bodySmall: const TextStyle(fontSize: 12, height: 1.4),
+              bodyLarge: base.textTheme.bodyLarge?.copyWith(
+                fontSize: 14,
+                height: 1.4,
+              ),
+              bodyMedium: base.textTheme.bodyMedium?.copyWith(
+                fontSize: 13,
+                height: 1.4,
+              ),
+              bodySmall: base.textTheme.bodySmall?.copyWith(
+                fontSize: 12,
+                height: 1.4,
+              ),
             )
             .apply(bodyColor: colors.onSurface, displayColor: colors.onSurface),
         appBarTheme: base.appBarTheme.copyWith(
           toolbarHeight: 48,
-          titleTextStyle: TextStyle(
+          titleTextStyle: base.appBarTheme.titleTextStyle?.copyWith(
             fontSize: 18,
             fontWeight: FontWeight.w700,
             color: colors.onSurface,
@@ -54,30 +74,34 @@ class SubscriptionStyle extends StatelessWidget {
           ),
         ),
         listTileTheme: ListTileThemeData(
-          dense: true,
+          dense: compact,
           minVerticalPadding: 6,
           contentPadding: const EdgeInsets.symmetric(
             horizontal: 12,
             vertical: 2,
           ),
-          titleTextStyle: TextStyle(
+          titleTextStyle: base.textTheme.titleMedium?.copyWith(
             fontSize: 14,
             fontWeight: FontWeight.w600,
             color: colors.onSurface,
           ),
-          subtitleTextStyle: TextStyle(
+          subtitleTextStyle: base.textTheme.bodySmall?.copyWith(
             fontSize: 12,
             height: 1.4,
             color: colors.onSurfaceVariant,
           ),
         ),
         inputDecorationTheme: base.inputDecorationTheme.copyWith(
-          isDense: true,
-          contentPadding: const EdgeInsets.symmetric(
-            horizontal: 12,
-            vertical: 12,
+          isDense: compact,
+          constraints: compact ? null : const BoxConstraints(minHeight: 56),
+          contentPadding: EdgeInsets.symmetric(
+            horizontal: compact ? 12 : 16,
+            vertical: compact ? 12 : 17,
           ),
-          labelStyle: TextStyle(fontSize: 13, color: colors.onSurfaceVariant),
+          labelStyle: TextStyle(
+            fontSize: compact ? 13 : 15,
+            color: colors.onSurfaceVariant,
+          ),
         ),
         chipTheme: base.chipTheme.copyWith(
           padding: const EdgeInsets.symmetric(horizontal: 4),

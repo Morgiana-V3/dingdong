@@ -2,11 +2,27 @@ import 'package:flutter/material.dart';
 
 const accent = Color(0xFFE36547);
 
+/// Keeps list items and form fields comfortably readable on wider windows.
+EdgeInsets pageInsets(
+  BuildContext context, {
+  double side = 16,
+  double top = 12,
+  double bottom = 24,
+}) {
+  final inset = (MediaQuery.sizeOf(context).width - 640) / 2;
+  final horizontal = inset > side ? inset : side;
+  return EdgeInsets.fromLTRB(horizontal, top, horizontal, bottom);
+}
+
 ThemeData inboxTheme(Brightness brightness) {
   final dark = brightness == Brightness.dark;
   final scheme = ColorScheme.fromSeed(seedColor: accent, brightness: brightness)
       .copyWith(
-        primary: dark ? const Color(0xFFFFAD95) : accent,
+        primary: dark ? const Color(0xFFFFAD95) : const Color(0xFFAC462B),
+        surfaceContainerLow: dark ? const Color(0xFF222428) : Colors.white,
+        surfaceContainerHighest: dark
+            ? const Color(0xFF34363A)
+            : const Color(0xFFECEDE9),
         surface: dark ? const Color(0xFF181A1D) : const Color(0xFFFAFAF8),
       );
   final fieldShape = BorderRadius.circular(14);
@@ -24,6 +40,7 @@ ThemeData inboxTheme(Brightness brightness) {
       surfaceTintColor: Colors.transparent,
       centerTitle: false,
       titleTextStyle: TextStyle(
+        fontFamily: 'Roboto',
         color: scheme.onSurface,
         fontSize: 21,
         fontWeight: FontWeight.w700,
@@ -36,6 +53,7 @@ ThemeData inboxTheme(Brightness brightness) {
     ),
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
+      constraints: const BoxConstraints(minHeight: 56),
       fillColor: dark ? const Color(0xFF22252A) : const Color(0xFFF0F1EE),
       border: fieldBorder(Colors.transparent),
       enabledBorder: fieldBorder(scheme.outlineVariant.withValues(alpha: .45)),
@@ -49,6 +67,7 @@ ThemeData inboxTheme(Brightness brightness) {
         fontSize: 14,
       ),
       helperStyle: TextStyle(color: scheme.onSurfaceVariant, height: 1.4),
+      helperMaxLines: 3,
       errorMaxLines: 3,
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 17),
     ),
@@ -90,7 +109,8 @@ ThemeData inboxTheme(Brightness brightness) {
     ),
     outlinedButtonTheme: OutlinedButtonThemeData(
       style: OutlinedButton.styleFrom(
-        minimumSize: const Size(48, 48),
+        minimumSize: const Size(48, 52),
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         side: BorderSide(color: scheme.outlineVariant),
       ),
@@ -103,9 +123,16 @@ ThemeData inboxTheme(Brightness brightness) {
         TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
       ),
     ),
+    textButtonTheme: TextButtonThemeData(
+      style: TextButton.styleFrom(
+        minimumSize: const Size(48, 48),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      ),
+    ),
     filledButtonTheme: FilledButtonThemeData(
       style: FilledButton.styleFrom(
-        minimumSize: const Size(48, 48),
+        minimumSize: const Size(48, 52),
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
     ),
@@ -126,6 +153,38 @@ ThemeData inboxTheme(Brightness brightness) {
       ),
     ),
   );
+}
+
+class SettingsExpansion extends StatelessWidget {
+  const SettingsExpansion({
+    super.key,
+    required this.title,
+    this.subtitle,
+    required this.children,
+  });
+
+  final Widget title;
+  final Widget? subtitle;
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Theme(
+      data: theme.copyWith(highlightColor: Colors.transparent),
+      child: ExpansionTile(
+        splashColor: Colors.transparent,
+        tilePadding: EdgeInsets.zero,
+        childrenPadding: EdgeInsets.only(
+          top: MediaQuery.textScalerOf(context).scale(12),
+          bottom: 4,
+        ),
+        title: title,
+        subtitle: subtitle,
+        children: children,
+      ),
+    );
+  }
 }
 
 class InlineNotice extends StatelessWidget {

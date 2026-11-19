@@ -1,3 +1,4 @@
+import '../../ui/theme.dart';
 import '../../ui/selection_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -93,13 +94,8 @@ class _PlatformAccountsPageState extends State<PlatformAccountsPage> {
         },
         child: ListView(
           physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.all(14),
+          padding: pageInsets(context),
           children: [
-            Text(
-              '管理订阅任务使用的平台账号。',
-              style: TextStyle(color: colors.onSurfaceVariant, height: 1.6),
-            ),
-            const SizedBox(height: 12),
             if (busy) const LinearProgressIndicator(),
             if (widget.serverError != null)
               Text(widget.serverError!, style: TextStyle(color: colors.error)),
@@ -118,18 +114,20 @@ class _PlatformAccountsPageState extends State<PlatformAccountsPage> {
                       const Text('当前没有需要登录的任务'),
                       const SizedBox(height: 8),
                       Text(
-                        '先在左侧添加并开启订阅，任务需要的账号会自动出现在这里。',
+                        '开启订阅后，需要授权的账号会出现在这里。',
                         textAlign: TextAlign.center,
                         style: TextStyle(
                           color: colors.onSurfaceVariant,
                           height: 1.6,
                         ),
                       ),
-                      const SizedBox(height: 16),
-                      OutlinedButton(
-                        onPressed: widget.onAddTask,
-                        child: const Text('去添加订阅'),
-                      ),
+                      if (widget.onAddTask != null) ...[
+                        const SizedBox(height: 16),
+                        OutlinedButton(
+                          onPressed: widget.onAddTask,
+                          child: const Text('去添加订阅'),
+                        ),
+                      ],
                     ],
                   ),
                 ),
@@ -160,6 +158,7 @@ class _PlatformAccountsPageState extends State<PlatformAccountsPage> {
         SheetChoice(
           value: 'login',
           label: ready ? '重新登录' : '登录并启用任务',
+          description: ready ? null : '授权后，已开启的任务会继续执行',
           icon: Icons.login,
         ),
         if (ready)
@@ -170,10 +169,42 @@ class _PlatformAccountsPageState extends State<PlatformAccountsPage> {
           ),
         if (ready)
           const SheetChoice(value: 'logout', label: '退出账号', icon: Icons.logout),
+        if (tasksFor(entry).isNotEmpty)
+          SheetChoice(
+            value: 'tasks',
+            label: '关联任务',
+            description: '查看全部 ${tasksFor(entry).length} 个任务',
+            icon: Icons.checklist_rounded,
+          ),
       ],
     );
-    if (action != null && mounted) await act(action, entry['id'] as String);
+    if (action == 'tasks' && mounted) {
+      await showAppSheet<void>(
+        context: context,
+        builder: (_) => SheetDialog(
+          title: Text('${entry['name']} · 关联任务'),
+          content: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              for (final name in tasksFor(entry))
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 6),
+                  child: Text(name),
+                ),
+            ],
+          ),
+        ),
+      );
+    } else if (action != null && mounted) {
+      await act(action, entry['id'] as String);
+    }
   }
+
+  List<String> tasksFor(Map<String, dynamic> entry) =>
+      (entry['tasks'] as List? ?? [])
+          .cast<Map>()
+          .map((task) => task['name'] as String)
+          .toList();
 
   Widget accountCard(Map<String, dynamic> entry) {
     final colors = Theme.of(context).colorScheme;
@@ -205,27 +236,34 @@ class _PlatformAccountsPageState extends State<PlatformAccountsPage> {
             foregroundImage: photo,
             onForegroundImageError: photo == null ? null : (_, _) {},
             child: Text(
-              (entry['name'] as String).substring(0, 1),
+              (entry['name'] as String).characters.firstOrNull ?? '？',
               style: TextStyle(fontSize: 14, color: colors.onSurfaceVariant),
             ),
           ),
           title: Text(
-            ready ? name ?? entry['name'] as String : entry['name'] as String,
+            ready && name != null && name.trim().isNotEmpty
+                ? name
+                : entry['name'] as String,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontWeight: FontWeight.w700),
           ),
           subtitle: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('${entry['name']} · ${ready ? '已登录' : '等待登录'}'),
               Text(
-                '用于 ${tasks.length} 个已开启任务',
-                style: const TextStyle(fontSize: 11),
+                [
+                  if (ready) entry['name'],
+                  ready ? '已登录' : '等待登录',
+                  if (tasks.length > 1) '${tasks.length} 个任务',
+                ].join(' · '),
               ),
-              Text(
-                tasks.map((task) => task['name'] as String).join(' · '),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontSize: 11),
-              ),
+              if (tasks.length == 1)
+                Text(
+                  tasks.single['name'] as String,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
               if (!ready && entry['message'] != null)
                 Text(
                   entry['message'] as String,
@@ -234,7 +272,9 @@ class _PlatformAccountsPageState extends State<PlatformAccountsPage> {
                 ),
             ],
           ),
-          trailing: const Icon(Icons.chevron_right, size: 18),
+          trailing: supported
+              ? const Icon(Icons.chevron_right, size: 18)
+              : null,
         ),
       ),
     );

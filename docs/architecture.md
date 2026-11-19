@@ -35,7 +35,7 @@ Flutter 管理界面与阅读交互；Kotlin 前台服务管理 OkHttp WebSocket
 
 ## HTML
 
-HTML 使用 WebView，独立于 Flutter 主界面。保留 HTML 正文 CSS，不提供阅读模式。HTML 直接呈现作者排版；普通文本和 Markdown 的消息标题置于正文中随内容滚动。顶部仅保留返回与更多操作，来源和时间等元信息收进“消息信息”。脚本执行关闭，无原生 JS 桥；清除 script、iframe、object、embed、base、link 和 http-equiv 元信息，插入限制性 CSP。
+HTML 使用 WebView，独立于 Flutter 主界面。保留 HTML 正文 CSS，不提供阅读模式。HTML 直接呈现作者排版；普通文本和 Markdown 的消息标题置于正文中随内容滚动。顶部提供返回、收藏与更多操作，来源和时间等元信息收进“消息信息”。脚本执行关闭，无原生 JS 桥；清除 script、iframe、object、embed、base、link 和 http-equiv 元信息，插入限制性 CSP。
 
 仅加载内嵌图片、字体和媒体数据，外部链接确认后交给原生白名单路由：X、贴吧、小红书和 B 站优先使用指定包的可浏览 ACTION_VIEW，缺少应用时回退到网页。原帖 ID 按字符串处理，不损失大整数精度；不解析外部 intent 的组件、flags 或 extras。读取密钥仅由原生网络层使用，不交给 WebView。这里的“原样”指保留静态布局，不表示提供完整浏览器执行环境。
 
@@ -87,4 +87,4 @@ Cordis 插件注册订阅描述、字段、账号依赖及采集函数，`GET /v
 
 手机订阅管理以任务列表为入口，添加任务后选择服务器安装的插件，字段与 Studio 定义一致。服务端已适配 B 站指定 UP 主、贴吧兴趣精选、X 兴趣发现、小红书兴趣发现和统一推送；支持仅手动、固定间隔、北京时间定点、立即运行与停止。右侧账号需求来自已开启任务及汇总来源。任务缺少 UP 主、AI 或登录时分别提示等待配置，不以手机 Cookie 存在代替服务端验证。
 
-账号平台按 bilibili/x/xiaohongshu 隔离，复用当前服务器 HTTPS 与接收凭据；独立官方登录页只上传当前平台必要会话。B 站可读取关注列表选择 UP 主；X、小红书同时提供通过 SSH 访问服务器浏览器的备用登录入口。AI 配置在订阅管理「更多」中，加密保存在服务器。Node 运行时、投递进度与实际验证范围见 ../dingdong-node/README.md。
+账号平台按 bilibili/x/xiaohongshu 隔离，复用当前服务器 HTTPS 与接收凭据。独立官方登录页只上传当前平台必要会话。B 站可读取关注列表选择 UP 主。X、小红书同时提供通过 SSH 访问服务器浏览器的备用登录入口。AI 配置在订阅管理右上角「服务器配置」中，加密保存在服务器。[订阅服务说明](../services/subscriptions/README.md)

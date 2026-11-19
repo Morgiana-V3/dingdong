@@ -194,6 +194,7 @@ class MainActivity : FlutterActivity() {
                                 if (action == "delete") schedulePurge()
                                 null
                             }
+                            "previewDocument" -> store.previewDocument(call.argument<String>("id")!!)
                             "content" -> store.content(call.argument<String>("id")!!)
                             "update" -> {
                                 val id = call.argument<String>("id")!!

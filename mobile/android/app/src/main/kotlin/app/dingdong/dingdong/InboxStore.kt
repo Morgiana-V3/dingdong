@@ -120,6 +120,17 @@ class InboxStore(context: Context) : SQLiteOpenHelper(context, "inbox.db", null,
     }
 
     @Synchronized
+    fun previewDocument(id: String): String? {
+        readableDatabase.rawQuery(
+            "SELECT content FROM messages WHERE id = ? AND deleted = 0 " +
+                "AND format IN ('html', 'markdown') AND (instr(content, 'data:image/') > 0 OR instr(content, '<article') > 0)",
+            arrayOf(id)
+        ).use { cursor ->
+            return if (cursor.moveToFirst()) cursor.getString(0) else null
+        }
+    }
+
+    @Synchronized
     fun content(id: String): String {
         readableDatabase.rawQuery(
             "SELECT content FROM messages WHERE id = ? AND deleted = 0", arrayOf(id)

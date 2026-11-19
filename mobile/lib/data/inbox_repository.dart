@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'message_preview.dart';
 import 'package:flutter/services.dart';
 
 class InboxMessage {
@@ -39,6 +40,32 @@ class InboxMessage {
 
 class InboxRepository {
   static const channel = MethodChannel('dingdong/inbox');
+
+  // Message bodies are immutable for a scoped ID. Keep a bounded set of
+  // card previews across refreshes, including messages without artwork.
+  final _previews = <String, Future<MessagePreview?>>{};
+
+  Future<MessagePreview?> preview(InboxMessage message) {
+    if (message.format == 'text') return Future.value();
+    final existing = _previews.remove(message.id);
+    final result = existing ?? _loadPreview(message);
+    _previews[message.id] = result;
+    if (_previews.length > 48) _previews.remove(_previews.keys.first);
+    return result;
+  }
+
+  Future<MessagePreview?> _loadPreview(InboxMessage message) async {
+    try {
+      final document = await channel.invokeMethod<String>('previewDocument', {
+        'id': message.id,
+      });
+      if (document == null) return null;
+      return await messagePreview(document, message.format);
+    } on Exception {
+      _previews.remove(message.id);
+      return null;
+    }
+  }
 
   Future<Map<String, dynamic>> subscriptions([
     Map<String, dynamic>? command,
