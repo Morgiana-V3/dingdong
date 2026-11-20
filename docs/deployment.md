@@ -2,7 +2,7 @@
 
 ## 初次部署
 
-准备 Docker Engine 与 Compose 插件。可在仓库的 `services/relay/` 中直接运行 Compose，也可将该目录内容复制到服务器的独立部署目录，例如 `/opt/dingdong`。如需在同一服务器部署订阅服务，参照 [两套服务的部署说明](../services/subscriptions/deploy/README.md)。
+准备 Docker Engine 与 Compose 插件。可在仓库的 `services/relay/` 中直接运行 Compose，也可将该目录内容复制到服务器的独立部署目录，例如 `/opt/dingdong`。如需在同一服务器部署可选插件引擎，参照 [插件引擎部署说明](../services/engine/README.md) 及 [Nginx 反向代理模板](../services/engine/deploy/nginx.conf.template)。
 
 已有实例升级时，沿用原部署目录，或在新目录启动前将原 Compose 项目名写入部署用的 `.env`，例如 `COMPOSE_PROJECT_NAME=dingdong`。通过原目录中的 `docker compose ps` 核对项目，项目名也可从运行容器的 `com.docker.compose.project` 标签读取。项目名决定使用哪个命名卷。
 

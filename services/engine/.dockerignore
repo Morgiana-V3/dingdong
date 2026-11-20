@@ -1,0 +1,11 @@
+**
+!package.json
+!package-lock.json
+!src/
+!src/**
+!web/
+!web/**
+!sdk/
+!sdk/**
+!scripts/
+!scripts/**

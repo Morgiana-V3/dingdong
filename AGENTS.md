@@ -1,7 +1,7 @@
 # 叮咚项目约定
 
 - 开始工作前阅读 `README.md`、`docs/architecture.md` 和 `docs/development.md`。
-- Flutter 客户端位于 `mobile/`，Android 后台接收、SQLite、备份和首帧同步使用 Kotlin。`services/relay/` 是 FastAPI 消息中转。`services/subscriptions/` 是 Node 订阅服务和管理台。两套服务各有 Docker Compose 配置。
+- Flutter 客户端位于 `mobile/`，Android 后台接收、SQLite、备份和首帧同步使用 Kotlin。`services/relay/` 是 FastAPI 消息中转。`services/engine/` 是基于 Cordis 的可选插件引擎和管理台。两套服务各有 Docker Compose 配置。
 - 按职责组织代码，使用清楚的业务名称，不做无关重写。Dart 执行 `dart format`，Kotlin 和 Python 使用 4 空格缩进；分支和异常处理展开，避免一行多条语句。
 - 界面使用普通中文、Material 组件和统一主题。近白背景、橙色强调、深色跟随系统；不加入营销横幅或虚假默认消息。
 - 正文成功保存到手机后才能确认接收；服务端确认后清除正文并保留去重记录。变更协议和持久化字段时保持兼容。

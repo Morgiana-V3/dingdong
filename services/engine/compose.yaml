@@ -1,0 +1,19 @@
+services:
+  engine:
+    build: .
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "127.0.0.1:${ENGINE_PORT:-18890}:18890"
+    volumes:
+      - engine_data:/app/data
+      - ./plugins:/app/plugins:ro
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:18890/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  engine_data:

@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  relay-and-tools:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Test relay
+        working-directory: services/relay
+        run: |
+          python -m pip install -r requirements-dev.txt
+          python -m unittest discover -s tests -v
+      - name: Test sending tools
+        run: python -m unittest discover -s tools/tests -v
+
+  engine:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install, typecheck and test engine
+        working-directory: services/engine
+        run: |
+          npm install
+          npm run typecheck
+          npm test
+          npm run plugin:test ./plugins/bilibili-feed
+          npm run plugin:test ./plugins/rss-watch
+          npm run plugin:test ./plugins/ai-web-digest
+
+  mobile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+      - name: Flutter analyze and test
+        working-directory: mobile
+        run: |
+          flutter pub get
+          flutter analyze
+          flutter test
+      - name: Android unit tests
+        working-directory: mobile/android
+        run: ./gradlew :app:testDebugUnitTest

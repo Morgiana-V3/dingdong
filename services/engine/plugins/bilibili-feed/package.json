@@ -1,0 +1,8 @@
+{
+  "name": "dingdong-plugin-bilibili-feed",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "description": "叮咚官方参考插件：B 站关注动态订阅（演示声明式网页登录、动态表单、增量去重与可选 AI 导读）"
+}

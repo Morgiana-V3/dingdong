@@ -67,6 +67,14 @@ class InboxRepository {
     }
   }
 
+  Future<bool> engineAvailable() async {
+    try {
+      return await channel.invokeMethod<bool>('engineAvailable') ?? false;
+    } on Exception {
+      return false;
+    }
+  }
+
   Future<Map<String, dynamic>> subscriptions([
     Map<String, dynamic>? command,
   ]) async {
@@ -81,13 +89,6 @@ class InboxRepository {
         'address': address,
       }) ??
       false;
-
-  Future<Map<String, dynamic>> studio([Map<String, dynamic>? command]) async {
-    final response = await channel.invokeMethod<String>('studio', {
-      if (command != null) 'command': jsonEncode(command),
-    });
-    return jsonDecode(response!) as Map<String, dynamic>;
-  }
 
   Future<List<InboxMessage>> messages({
     String query = '',

@@ -36,6 +36,10 @@ class MainActivity : FlutterActivity() {
         channel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "dingdong/inbox")
         channel.setMethodCallHandler { call, result ->
             when (call.method) {
+                "engineAvailable" -> studioWorker.execute {
+                    val available = PlatformAccounts.engineAvailable(this, settings)
+                    runOnUiThread { result.success(available) }
+                }
                 "platformLogin" -> {
                     if (platformLoginResult != null) {
                         result.error("login", "登录窗口已打开", null)
@@ -43,11 +47,21 @@ class MainActivity : FlutterActivity() {
                         platformLoginResult = result
                         studioWorker.execute {
                             try {
-                                val platform = call.argument<String>("platform") ?: "bilibili"
-                                val pairing = org.json.JSONObject(PlatformAccounts.request(this, settings, "pair", platform = platform))
+                                val authId = call.argument<String>("authId") ?: ""
+                                val authName = call.argument<String>("authName") ?: authId
+                                val loginUrl = call.argument<String>("loginUrl") ?: ""
+                                val cookieDomains = ArrayList(call.argument<List<String>>("cookieDomains") ?: emptyList())
+                                val requiredCookies = ArrayList(call.argument<List<String>>("requiredCookies") ?: emptyList())
+                                val clearExisting = call.argument<Boolean>("clearExisting") ?: false
+                                val pairing = org.json.JSONObject(PlatformAccounts.request(this, settings, "pair", authId = authId))
                                 runOnUiThread {
                                     startActivityForResult(Intent(this, PlatformLoginActivity::class.java).apply {
-                                        putExtra("platform", platform)
+                                        putExtra("authId", authId)
+                                        putExtra("authName", authName)
+                                        putExtra("loginUrl", loginUrl)
+                                        putStringArrayListExtra("cookieDomains", cookieDomains)
+                                        putStringArrayListExtra("requiredCookies", requiredCookies)
+                                        putExtra("clearExisting", clearExisting)
                                         putExtra("endpoint", pairing.getString("endpoint"))
                                         putExtra("code", pairing.getString("code"))
                                         putExtra("directConnection", settings.directConnection)
@@ -56,7 +70,7 @@ class MainActivity : FlutterActivity() {
                             } catch (error: Exception) {
                                 runOnUiThread {
                                     platformLoginResult = null
-                                    result.error("login", error.message ?: "无法连接账号服务", null)
+                                    result.error("login", error.message ?: "无法连接引擎凭据服务", null)
                                 }
                             }
                         }
@@ -64,12 +78,16 @@ class MainActivity : FlutterActivity() {
                 }
                 "subscriptions", "platformAccounts" -> studioWorker.execute {
                     try {
-                        val response = PlatformAccounts.request(this, settings,
+                        val response = PlatformAccounts.request(
+                            this,
+                            settings,
                             if (call.method == "subscriptions") "subscriptions" else call.argument<String>("action") ?: "status",
-                            call.argument<String>("command"), call.argument<String>("platform") ?: "bilibili")
+                            call.argument<String>("command"),
+                            call.argument<String>("authId") ?: "",
+                        )
                         runOnUiThread { result.success(response) }
                     } catch (error: Exception) {
-                        runOnUiThread { result.error("accounts", error.message ?: "无法读取账号状态", null) }
+                        runOnUiThread { result.error("accounts", error.message ?: "无法连接插件引擎", null) }
                     }
                 }
                 "showSavedToken" -> {
@@ -97,14 +115,6 @@ class MainActivity : FlutterActivity() {
                         result.success(ExternalLinks.open(this, call.argument<String>("address") ?: ""))
                     } catch (_: IllegalArgumentException) {
                         result.error("link", "链接格式不受支持", null)
-                    }
-                }
-                "studio" -> studioWorker.execute {
-                    try {
-                        val response = StudioControl.request(this, settings, call.argument<String>("command"))
-                        runOnUiThread { result.success(response) }
-                    } catch (error: Exception) {
-                        runOnUiThread { result.error("studio", error.message ?: "无法读取订阅设置", null) }
                     }
                 }
                 "settings" -> result.success(mapOf(

@@ -13,7 +13,7 @@ void main() {
         'revision': 7,
         'plugins': [
           {
-            'id': 'minipush-digest',
+            'id': 'digest',
             'name': '统一推送',
             'studio': true,
             'fields': [
@@ -50,7 +50,7 @@ void main() {
                 MaterialPageRoute<void>(
                   builder: (_) => SubscriptionEditor(
                     snapshot: snapshot,
-                    initialPluginId: 'minipush-digest',
+                    initialPluginId: 'digest',
                     save: (values) async {
                       saved = values;
                     },
@@ -155,7 +155,7 @@ void main() {
                       {
                         'id': 'owner',
                         'name': '另一个汇总',
-                        'pluginId': 'minipush-digest',
+                        'pluginId': 'digest',
                         'enabled': true,
                         'config': {'sourceTaskIds': 'x'},
                       },
@@ -248,27 +248,23 @@ void main() {
     },
   );
   testWidgets(
-    'Studio forum, text, number and boolean fields save a complete task',
+    'generic stringList, textarea, number and boolean fields save a complete task',
     (tester) async {
       Map<String, dynamic>? saved;
       final snapshot = <String, dynamic>{
         'plugins': [
           {
-            'id': 'tieba-subscription',
-            'name': '贴吧兴趣精选',
-            'studio': true,
-            'description': '按兴趣筛选公开帖子',
-            'capabilities': ['tieba.read', 'ai.tools'],
+            'id': 'rss-watch',
+            'name': 'RSS 订阅',
+            'description': '拉取任意 RSS/Atom 源',
+            'capabilities': ['ai.optional'],
             'fields': [
               {'key': 'globalFilter', 'label': '总过滤说明', 'type': 'textarea'},
               {
-                'key': 'forums',
-                'label': '贴吧配置',
-                'type': 'forums',
+                'key': 'feeds',
+                'label': '订阅地址列表',
+                'type': 'stringList',
                 'required': true,
-                'default': [
-                  {'name': '', 'filter': ''},
-                ],
               },
               {
                 'key': 'maxItems',
@@ -287,9 +283,6 @@ void main() {
         ],
         'providers': [
           {'id': 'fixture', 'name': '测试模型'},
-        ],
-        'channels': [
-          {'id': 'current-relay', 'name': '当前叮咚收件箱'},
         ],
         'tasks': [],
       };
@@ -320,7 +313,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.enterText(
         find.widgetWithText(TextFormField, '任务名称'),
-        '动画精选',
+        '科技精选',
       );
       final scrollable = find
           .descendant(
@@ -333,30 +326,29 @@ void main() {
         await tester.pumpAndSettle();
       }
 
-      await scrollTo(
-        find.byKey(const ValueKey('tieba-subscription/globalFilter')),
-      );
+      await scrollTo(find.byKey(const ValueKey('rss-watch/globalFilter')));
       await tester.enterText(
-        find.byKey(const ValueKey('tieba-subscription/globalFilter')),
-        '动画讨论，排除广告',
+        find.byKey(const ValueKey('rss-watch/globalFilter')),
+        '关注开源与 AI',
       );
-      await scrollTo(find.widgetWithText(TextFormField, '吧名'));
-      await tester.enterText(find.widgetWithText(TextFormField, '吧名'), '动画');
-      await scrollTo(find.byKey(const ValueKey('tieba-subscription/maxItems')));
+      await scrollTo(find.byKey(const ValueKey('rss-watch/feeds')));
       await tester.enterText(
-        find.byKey(const ValueKey('tieba-subscription/maxItems')),
+        find.byKey(const ValueKey('rss-watch/feeds')),
+        'https://a.example/rss\nhttps://b.example/atom',
+      );
+      await scrollTo(find.byKey(const ValueKey('rss-watch/maxItems')));
+      await tester.enterText(
+        find.byKey(const ValueKey('rss-watch/maxItems')),
         '2',
       );
       await scrollTo(find.text('保存任务'));
       await tester.tap(find.text('保存任务'));
       await tester.pumpAndSettle();
-      expect(saved?['pluginId'], 'tieba-subscription');
+      expect(saved?['pluginId'], 'rss-watch');
       expect(saved?['schedule'], {'type': 'manual'});
       expect(saved?['config'], {
-        'globalFilter': '动画讨论，排除广告',
-        'forums': [
-          {'name': '动画', 'filter': ''},
-        ],
+        'globalFilter': '关注开源与 AI',
+        'feeds': ['https://a.example/rss', 'https://b.example/atom'],
         'maxItems': 2,
         'includeImages': true,
       });

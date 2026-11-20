@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../data/inbox_repository.dart';
 import '../accounts/platform_accounts_page.dart';
-import 'studio_page.dart';
 import 'subscription_editor.dart';
 import 'subscription_providers.dart';
 import 'subscription_style.dart';
@@ -123,6 +122,121 @@ class _SubscriptionManagementPageState extends State<SubscriptionManagementPage>
     }
   }
 
+  Future<void> pickPluginAndCreate(List<Map<String, dynamic>> plugins) async {
+    final available = plugins.where((p) => p['legacy'] != true).toList()
+      ..sort((a, b) {
+        final aDigest = a['id'] == digestPluginId ? 1 : 0;
+        final bDigest = b['id'] == digestPluginId ? 1 : 0;
+        return aDigest.compareTo(bDigest);
+      });
+    if (available.isEmpty) return;
+    if (available.length == 1) {
+      await edit(available.first);
+      return;
+    }
+    final selected = await showAppSheet<Map<String, dynamic>>(
+      context: context,
+      builder: (sheetContext) {
+        final colors = Theme.of(sheetContext).colorScheme;
+        return SheetDialog(
+          title: const Text('选择插件'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                '以下为当前服务器已加载的插件，选择后按插件配置创建任务。',
+                style: TextStyle(fontSize: 13, color: colors.onSurfaceVariant),
+              ),
+              const SizedBox(height: 12),
+              for (final plugin in available)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Card(
+                    margin: EdgeInsets.zero,
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(12),
+                      onTap: () => Navigator.pop(sheetContext, plugin),
+                      child: Padding(
+                        padding: const EdgeInsets.all(14),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    plugin['name'] as String,
+                                    style: const TextStyle(
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ),
+                                Icon(
+                                  Icons.chevron_right_rounded,
+                                  size: 20,
+                                  color: colors.onSurfaceVariant,
+                                ),
+                              ],
+                            ),
+                            if ((plugin['description'] as String? ?? '')
+                                .isNotEmpty) ...[
+                              const SizedBox(height: 4),
+                              Text(
+                                plugin['description'] as String,
+                                style: TextStyle(
+                                  fontSize: 12.5,
+                                  height: 1.4,
+                                  color: colors.onSurfaceVariant,
+                                ),
+                              ),
+                            ],
+                            const SizedBox(height: 8),
+                            Wrap(
+                              spacing: 6,
+                              runSpacing: 6,
+                              children: [
+                                if (plugin['authId'] != null)
+                                  SubscriptionStatus(
+                                    '需 ${plugin['authName'] ?? plugin['authId']} 登录',
+                                    color: colors.primary,
+                                  ),
+                                if (studioItems(plugin['fields']).any(
+                                  (f) =>
+                                      f['type'] == 'aiProvider' &&
+                                      f['required'] == true,
+                                ))
+                                  SubscriptionStatus(
+                                    '需要 AI',
+                                    color: colors.tertiary,
+                                  ),
+                                if (studioItems(plugin['fields']).any(
+                                  (f) =>
+                                      f['type'] == 'aiProvider' &&
+                                      f['required'] != true,
+                                ))
+                                  const SubscriptionStatus('可选 AI'),
+                                if (plugin['id'] == digestPluginId)
+                                  const SubscriptionStatus('多源汇总'),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        );
+      },
+    );
+    if (selected != null && mounted) {
+      await edit(selected);
+    }
+  }
+
   Future<void> edit(
     Map<String, dynamic> plugin, [
     Map<String, dynamic>? task,
@@ -176,6 +290,21 @@ class _SubscriptionManagementPageState extends State<SubscriptionManagementPage>
               'provider': provider,
             });
             return (result['models'] as List).cast<String>();
+          },
+          revealKey: (id) async {
+            final result = await widget.repository.subscriptions({
+              'action': 'revealProviderKey',
+              'revision': snapshot!['revision'],
+              'id': id,
+            });
+            return result['key'] as String;
+          },
+          testConnection: (provider) async {
+            return await widget.repository.subscriptions({
+              'action': 'testProvider',
+              'revision': snapshot!['revision'],
+              'provider': provider,
+            });
           },
         ),
       ),
@@ -452,35 +581,10 @@ class _SubscriptionManagementPageState extends State<SubscriptionManagementPage>
               onPressed: busy || snapshot == null ? null : configureServer,
               icon: const Icon(Icons.tune_rounded),
             ),
-            SheetMenuButton<String>(
-              tooltip: '更多',
-              onSelected: (value) async {
-                if (value == 'refresh') {
-                  await refresh();
-                  return;
-                }
-                active = false;
-                await Navigator.of(context).push(
-                  MaterialPageRoute<void>(
-                    builder: (_) => StudioPage(repository: widget.repository),
-                  ),
-                );
-                active = true;
-                if (mounted) await refresh();
-              },
-              choices: [
-                SheetChoice(
-                  value: 'refresh',
-                  label: '刷新订阅',
-                  icon: Icons.refresh,
-                  enabled: !busy,
-                ),
-                const SheetChoice(
-                  value: 'studio',
-                  label: '电脑 Studio 管理',
-                  icon: Icons.computer_outlined,
-                ),
-              ],
+            IconButton(
+              tooltip: '刷新订阅',
+              onPressed: busy ? null : refresh,
+              icon: const Icon(Icons.refresh),
             ),
           ],
           bottom: TabBar(
@@ -556,9 +660,7 @@ class _SubscriptionManagementPageState extends State<SubscriptionManagementPage>
                                     .where((p) => p['legacy'] != true)
                                     .isEmpty
                             ? null
-                            : () => edit(
-                                plugins.firstWhere((p) => p['legacy'] != true),
-                              ),
+                            : () => pickPluginAndCreate(plugins),
                         icon: const Icon(Icons.add),
                         label: const Text('添加任务'),
                       ),

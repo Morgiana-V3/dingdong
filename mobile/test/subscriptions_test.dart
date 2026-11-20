@@ -46,8 +46,12 @@ class SubscriptionRepository extends InboxRepository {
       'accounts': [
         if (task?['enabled'] == true)
           {
-            'id': 'bilibili',
-            'name': '哔哩哔哩',
+            'id': 'my-site',
+            'name': '自定义网站',
+            'type': 'web-cookie',
+            'loginUrl': 'https://example.com/login',
+            'cookieDomains': ['https://example.com'],
+            'requiredCookies': ['sid'],
             'state': 'idle',
             'tasks': [
               {'id': 'task-1', 'name': task!['name']},
@@ -149,23 +153,6 @@ void main() {
         find.widgetWithText(TextFormField, '任务名称'),
         '测试任务',
       );
-      await tester.scrollUntilVisible(
-        find.text('启用订阅'),
-        250,
-        scrollable: find
-            .descendant(
-              of: find.byKey(const ValueKey('subscription-form-list')),
-              matching: find.byType(Scrollable),
-            )
-            .first,
-      );
-      await tester.pumpAndSettle();
-      expect(
-        tester
-            .widget<SwitchListTile>(find.widgetWithText(SwitchListTile, '启用订阅'))
-            .value,
-        isTrue,
-      );
       await tester.pumpAndSettle();
       await tester.scrollUntilVisible(
         find.text('保存任务'),
@@ -201,7 +188,7 @@ void main() {
         ),
         findsOneWidget,
       );
-      await tester.tap(find.text('哔哩哔哩'));
+      await tester.tap(find.text('自定义网站'));
       await tester.pumpAndSettle();
       expect(find.text('登录并启用任务'), findsOneWidget);
       await tester.tap(find.byTooltip('关闭面板'));

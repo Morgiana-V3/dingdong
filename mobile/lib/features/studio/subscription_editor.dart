@@ -1,8 +1,6 @@
 import '../../ui/theme.dart';
 import '../../ui/selection_sheet.dart';
 import 'package:flutter/material.dart';
-import 'studio_page.dart';
-import 'bilibili_followings.dart';
 import 'source_selection.dart';
 import 'subscription_style.dart';
 
@@ -80,13 +78,17 @@ class _SubscriptionEditorState extends State<SubscriptionEditor> {
       switch (field['type']) {
         case 'boolean':
           config[key] = initial == true;
-        case 'forums':
-          config[key] = studioItems(
-            initial ??
-                [
-                  {'name': '', 'filter': ''},
-                ],
-          );
+        case 'select':
+        case 'aiProvider':
+          config[key] = '${initial ?? ''}';
+        case 'stringList':
+          final text = initial is List
+              ? initial.map((e) => '$e').join('\n')
+              : '${initial ?? ''}';
+          fields[key] = TextEditingController(text: text);
+        case 'secret':
+          // Never backfill saved secret values; empty means keep existing.
+          fields[key] = TextEditingController(text: '');
         case 'tasks':
           config[key] = (initial as String? ?? '')
               .split(',')
@@ -120,6 +122,12 @@ class _SubscriptionEditorState extends State<SubscriptionEditor> {
         final key = field['key'] as String;
         if (field['type'] == 'tasks') {
           values[key] = (config[key] as Set<String>).join(',');
+        } else if (field['type'] == 'stringList' && fields.containsKey(key)) {
+          values[key] = fields[key]!.text
+              .split(RegExp(r'\r?\n'))
+              .map((s) => s.trim())
+              .where((s) => s.isNotEmpty)
+              .toList();
         } else if (fields.containsKey(key)) {
           values[key] = field['type'] == 'number'
               ? num.parse(fields[key]!.text)
@@ -279,64 +287,91 @@ class _SubscriptionEditorState extends State<SubscriptionEditor> {
         ),
       );
     }
-    if (field['type'] == 'forums') {
-      final forums = config[key] as List<Map<String, dynamic>>;
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(label, style: Theme.of(context).textTheme.titleMedium),
-          for (final forum in forums)
-            Card(
-              key: ObjectKey(forum),
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: Column(
-                  children: [
-                    TextFormField(
-                      initialValue: forum['name'] as String? ?? '',
-                      decoration: const InputDecoration(labelText: '吧名'),
-                      maxLength: 60,
-                      validator: (v) =>
-                          v == null || v.trim().isEmpty ? '请填写吧名' : null,
-                      onChanged: (v) => forum['name'] = v,
-                    ),
-                    TextFormField(
-                      initialValue: forum['filter'] as String? ?? '',
-                      decoration: const InputDecoration(
-                        labelText: '本吧过滤说明（可选）',
-                      ),
-                      minLines: 2,
-                      maxLines: 5,
-                      maxLength: 3000,
-                      onChanged: (v) => forum['filter'] = v,
-                    ),
-                    TextButton(
-                      onPressed: forums.length <= 1
-                          ? null
-                          : () => setState(() => forums.remove(forum)),
-                      child: const Text('移除此吧'),
-                    ),
-                  ],
+    if (field['type'] == 'aiProvider') {
+      final providers = studioItems(snapshotData['providers']);
+      final current = config[key] as String? ?? '';
+      final requiredField = field['required'] == true;
+      final choices = [
+        if (!requiredField) const SheetChoice(value: '', label: '不使用 AI'),
+        for (final p in providers)
+          SheetChoice(
+            value: '${p['id']}',
+            label: '${p['name']}',
+            description: p['model'] as String?,
+          ),
+      ];
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            SheetSelectField(
+              key: ValueKey('$pluginId/$key/$current'),
+              label: label,
+              value: choices.any((c) => c.value == current) ? current : null,
+              choices: choices,
+              onChanged: (next) => setState(() => config[key] = next),
+              validator: (selected) =>
+                  requiredField && (selected == null || selected.isEmpty)
+                  ? '请选择$label'
+                  : null,
+            ),
+            if (providers.isEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text(
+                  '服务器尚未添加 AI 服务商，可在订阅管理右上角「服务器配置」中添加。',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
                 ),
               ),
-            ),
-          TextButton.icon(
-            onPressed: forums.length >= 5
-                ? null
-                : () => setState(() => forums.add({'name': '', 'filter': ''})),
-            icon: const Icon(Icons.add),
-            label: const Text('添加贴吧'),
-          ),
-        ],
+          ],
+        ),
       );
     }
+    if (field['type'] == 'select') {
+      final options = studioItems(field['options']);
+      final current = config[key] as String? ?? '';
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 10),
+        child: SheetSelectField(
+          key: ValueKey('$pluginId/$key/$current'),
+          label: label,
+          value: options.any((o) => '${o['value']}' == current)
+              ? current
+              : null,
+          choices: [
+            for (final opt in options)
+              SheetChoice(
+                value: '${opt['value']}',
+                label: '${opt['label']}',
+                description: opt['description'] as String?,
+              ),
+          ],
+          onChanged: (next) => setState(() => config[key] = next),
+          validator: (selected) =>
+              field['required'] == true &&
+                  (selected == null || selected.isEmpty)
+              ? '请选择$label'
+              : null,
+        ),
+      );
+    }
+    final isSecret = field['type'] == 'secret';
+    final hasSavedSecret = isSecret && config[key] == true;
+    final multiline =
+        field['type'] == 'textarea' || field['type'] == 'stringList';
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: TextFormField(
         key: ValueKey('$pluginId/$key'),
         controller: fields[key],
+        obscureText: isSecret,
         decoration: InputDecoration(
-          labelText: label,
+          labelText: hasSavedSecret ? '$label（已保存，留空保持不变）' : label,
+          hintText: field['placeholder'] as String?,
           suffixIcon: (field['help'] as String? ?? '').isEmpty
               ? null
               : IconButton(
@@ -351,17 +386,22 @@ class _SubscriptionEditorState extends State<SubscriptionEditor> {
                   ),
                 ),
         ),
-        minLines: field['type'] == 'textarea' ? 3 : 1,
-        maxLines: field['type'] == 'textarea' ? 6 : 1,
+        minLines: multiline ? 3 : 1,
+        maxLines: multiline ? 6 : 1,
         keyboardType: field['type'] == 'number'
             ? const TextInputType.numberWithOptions(decimal: true, signed: true)
-            : TextInputType.multiline,
+            : multiline
+            ? TextInputType.multiline
+            : TextInputType.text,
         validator: (value) {
           if (field['required'] == true &&
+              !hasSavedSecret &&
               (value == null || value.trim().isEmpty)) {
             return '请填写$label';
           }
-          if (field['type'] == 'number' && num.tryParse(value ?? '') == null) {
+          if (field['type'] == 'number' &&
+              (value ?? '').trim().isNotEmpty &&
+              num.tryParse(value!) == null) {
             return '请输入数字';
           }
           return null;
@@ -430,192 +470,270 @@ class _SubscriptionEditorState extends State<SubscriptionEditor> {
     }
   }
 
-  @override
-  Widget build(BuildContext context) => SubscriptionStyle(
-    child: PopScope(
-      canPop: !busy,
-      child: Scaffold(
-        appBar: AppBar(
-          title: Text(
-            widget.asSource
-                ? '配置内容源'
-                : widget.task == null
-                ? '添加任务'
-                : '编辑任务',
-          ),
+  Widget _sectionCard(
+    BuildContext context, {
+    required String title,
+    String? subtitle,
+    required List<Widget> children,
+  }) {
+    final colors = Theme.of(context).colorScheme;
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(title, style: Theme.of(context).textTheme.titleMedium),
+            if (subtitle != null && subtitle.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Text(
+                subtitle,
+                style: TextStyle(
+                  fontSize: 12.5,
+                  color: colors.onSurfaceVariant,
+                ),
+              ),
+            ],
+            const SizedBox(height: 12),
+            ...children,
+          ],
         ),
-        body: Form(
-          key: form,
-          child: AbsorbPointer(
-            absorbing: busy,
-            child: ListView(
-              key: const ValueKey('subscription-form-list'),
-              padding: pageInsets(context),
-              children: [
-                if (busy) const LinearProgressIndicator(),
-                if (error != null)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 10),
-                    child: Text(
-                      error!,
-                      style: TextStyle(
-                        color: Theme.of(context).colorScheme.error,
-                      ),
-                    ),
-                  ),
-                TextFormField(
-                  controller: name,
-                  decoration: const InputDecoration(labelText: '任务名称'),
-                  maxLength: 80,
-                  validator: (v) =>
-                      v == null || v.trim().isEmpty ? '请填写任务名称' : null,
-                ),
-                const SizedBox(height: 10),
-                choice(
-                  '订阅插件',
-                  pluginId,
-                  plugins
-                      .where(
-                        (entry) =>
-                            (widget.task != null || entry['legacy'] != true) &&
-                            (!widget.asSource || entry['id'] != digestPluginId),
-                      )
-                      .toList(),
-                  (v) {
-                    pluginId = v;
-                    resetConfig({});
-                  },
-                  locked: widget.task != null,
-                ),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: TextButton.icon(
-                    onPressed: () => showAppSheet<void>(
-                      context: context,
-                      builder: (context) => SheetDialog(
-                        title: Text(plugin['name'] as String),
-                        content: Text(plugin['description'] as String? ?? ''),
-                      ),
-                    ),
-                    icon: const Icon(Icons.info_outline, size: 16),
-                    label: const Text('插件说明'),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Text('订阅内容', style: Theme.of(context).textTheme.titleMedium),
-                const SizedBox(height: 12),
-                for (final field in studioItems(plugin['fields'])) ...[
-                  pluginField(field),
-                  if (pluginId == 'bilibili-videos' && field['key'] == 'upIds')
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final pluginFields = studioItems(plugin['fields']);
+    final caps = (plugin['capabilities'] as List? ?? []);
+    final aiFields = pluginFields
+        .where((f) => f['type'] == 'aiProvider')
+        .toList();
+    final supportsAI =
+        aiFields.isNotEmpty ||
+        caps.contains('ai.required') ||
+        caps.contains('ai.optional') ||
+        caps.contains('ai.tools');
+    final requiresAI =
+        aiFields.any((f) => f['required'] == true) ||
+        caps.contains('ai.required') ||
+        caps.contains('ai.tools');
+    final hasAuth = plugin['authId'] != null;
+
+    return SubscriptionStyle(
+      child: PopScope(
+        canPop: !busy,
+        child: Scaffold(
+          appBar: AppBar(
+            title: Text(
+              widget.asSource
+                  ? '配置内容源'
+                  : widget.task == null
+                  ? '新建任务'
+                  : '编辑任务',
+            ),
+          ),
+          body: Form(
+            key: form,
+            child: AbsorbPointer(
+              absorbing: busy,
+              child: ListView(
+                key: const ValueKey('subscription-form-list'),
+                padding: pageInsets(context),
+                children: [
+                  if (busy) const LinearProgressIndicator(),
+                  if (error != null)
                     Padding(
-                      padding: const EdgeInsets.only(bottom: 20),
-                      child: OutlinedButton.icon(
-                        icon: const Icon(Icons.people_outline),
-                        label: const Text('从关注列表选择 UP 主'),
-                        onPressed: () async {
-                          final result = await Navigator.push<String>(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => BilibiliFollowings(
-                                selected: fields['upIds']!.text,
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: InlineNotice(error!),
+                    ),
+                  // 顶部插件身份卡
+                  Card(
+                    margin: const EdgeInsets.only(bottom: 12),
+                    child: Padding(
+                      padding: const EdgeInsets.all(14),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  plugin['name'] as String,
+                                  style: const TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ),
+                              if (widget.task == null && plugins.length > 1)
+                                TextButton(
+                                  onPressed: () async {
+                                    final selectable = plugins
+                                        .where(
+                                          (entry) =>
+                                              entry['legacy'] != true &&
+                                              (!widget.asSource ||
+                                                  entry['id'] !=
+                                                      digestPluginId),
+                                        )
+                                        .toList();
+                                    final next = await showChoiceSheet<String>(
+                                      context: context,
+                                      title: '切换插件',
+                                      selected: pluginId,
+                                      choices: [
+                                        for (final entry in selectable)
+                                          SheetChoice(
+                                            value: entry['id'] as String,
+                                            label: entry['name'] as String,
+                                            description:
+                                                entry['description'] as String?,
+                                          ),
+                                      ],
+                                    );
+                                    if (next != null &&
+                                        next != pluginId &&
+                                        mounted) {
+                                      setState(() {
+                                        pluginId = next;
+                                        resetConfig({});
+                                      });
+                                    }
+                                  },
+                                  child: const Text('更换插件'),
+                                ),
+                            ],
+                          ),
+                          if ((plugin['description'] as String? ?? '')
+                              .isNotEmpty) ...[
+                            const SizedBox(height: 4),
+                            Text(
+                              plugin['description'] as String,
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: colors.onSurfaceVariant,
                               ),
                             ),
-                          );
-                          if (result != null && mounted) {
-                            setState(() => fields['upIds']!.text = result);
-                          }
-                        },
+                          ],
+                          if (hasAuth || supportsAI) ...[
+                            const SizedBox(height: 8),
+                            Wrap(
+                              spacing: 6,
+                              runSpacing: 6,
+                              children: [
+                                if (hasAuth)
+                                  SubscriptionStatus(
+                                    '保存开启后需在「所需账号」完成 ${plugin['authName'] ?? plugin['authId']} 登录',
+                                    color: colors.primary,
+                                  ),
+                                if (requiresAI)
+                                  SubscriptionStatus(
+                                    '需要 AI 配置',
+                                    color: colors.tertiary,
+                                  ),
+                                if (supportsAI && !requiresAI)
+                                  const SubscriptionStatus('可选 AI 增强'),
+                              ],
+                            ),
+                          ],
+                        ],
                       ),
                     ),
-                ],
-                const SizedBox(height: 16),
-                const Divider(),
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  child: Text(
-                    '执行与推送',
-                    style: Theme.of(context).textTheme.titleMedium,
                   ),
-                ),
-                choice(
-                  'AI 配置',
-                  providerId,
-                  studioItems(snapshotData['providers']),
-                  (v) => providerId = v,
-                  optional: true,
-                ),
-                if ((plugin['capabilities'] as List? ?? []).contains(
-                      'ai.tools',
-                    ) &&
-                    studioItems(snapshotData['providers']).isEmpty)
-                  const Padding(
-                    padding: EdgeInsets.only(bottom: 10),
-                    child: Text('此插件需要 AI，可在服务器配置中添加服务。'),
-                  ),
-                if (widget.asSource)
-                  const Padding(
-                    padding: EdgeInsets.only(bottom: 10),
-                    child: Text('来源随统一推送执行，默认暂停独立运行。'),
-                  ),
-                if (!widget.asSource)
-                  choice('执行方式', scheduleType, [
-                    {'id': 'manual', 'name': '仅手动'},
-                    {'id': 'interval', 'name': '固定间隔'},
-                    {'id': 'daily', 'name': '每天定点（北京时间）'},
-                  ], (v) => scheduleType = v),
-                if (scheduleType == 'interval')
-                  TextFormField(
-                    controller: minutes,
-                    decoration: const InputDecoration(labelText: '间隔（分钟）'),
-                    keyboardType: TextInputType.number,
-                    validator: (v) {
-                      final n = int.tryParse(v ?? '');
-                      return n == null || n < 1 || n > 10080
-                          ? '请输入 1–10080 分钟'
-                          : null;
-                    },
-                  ),
-                if (scheduleType == 'daily')
-                  Wrap(
-                    spacing: 8,
+
+                  // 分组 1：基本设置（编辑页只管配置，新建默认启用，启停在外部列表控制）
+                  _sectionCard(
+                    context,
+                    title: '基本设置',
                     children: [
-                      for (final time in times)
-                        InputChip(
-                          label: Text(time),
-                          onDeleted: times.length <= 1
-                              ? null
-                              : () => setState(() => times.remove(time)),
+                      TextFormField(
+                        controller: name,
+                        decoration: InputDecoration(
+                          labelText: '任务名称',
+                          hintText: '例如：${plugin['name']}',
                         ),
-                      TextButton.icon(
-                        onPressed: times.length >= 24 ? null : addTime,
-                        icon: const Icon(Icons.add),
-                        label: const Text('添加时间'),
+                        maxLength: 80,
+                        validator: (v) =>
+                            v == null || v.trim().isEmpty ? '请填写任务名称' : null,
                       ),
                     ],
                   ),
-                if (!widget.asSource)
-                  SwitchListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: const Text('启用订阅'),
-                    value: enabled,
-                    onChanged: (v) => setState(() => enabled = v),
+
+                  // 分组 2：插件自定义配置（完全由插件 Schema 驱动，含 aiProvider 字段）
+                  if (pluginFields.isNotEmpty)
+                    _sectionCard(
+                      context,
+                      title: '插件配置',
+                      subtitle: '以下表单由「${plugin['name']}」插件声明',
+                      children: [
+                        for (final field in pluginFields) pluginField(field),
+                      ],
+                    ),
+
+                  // 分组 3：调度与推送（宿主统一控制触发方式，去重由插件自行通过 state 管理）
+                  _sectionCard(
+                    context,
+                    title: '调度设置',
+                    children: [
+                      if (widget.asSource)
+                        const Padding(
+                          padding: EdgeInsets.only(bottom: 10),
+                          child: Text('来源随统一推送执行，默认暂停独立运行。'),
+                        ),
+                      if (!widget.asSource)
+                        choice('执行方式', scheduleType, [
+                          {'id': 'manual', 'name': '仅手动'},
+                          {'id': 'interval', 'name': '固定间隔'},
+                          {'id': 'daily', 'name': '每天定点（北京时间）'},
+                        ], (v) => scheduleType = v),
+                      if (scheduleType == 'interval')
+                        TextFormField(
+                          controller: minutes,
+                          decoration: const InputDecoration(
+                            labelText: '间隔（分钟）',
+                          ),
+                          keyboardType: TextInputType.number,
+                          validator: (v) {
+                            final n = int.tryParse(v ?? '');
+                            return n == null || n < 1 || n > 10080
+                                ? '请输入 1–10080 分钟'
+                                : null;
+                          },
+                        ),
+                      if (scheduleType == 'daily')
+                        Wrap(
+                          spacing: 8,
+                          children: [
+                            for (final time in times)
+                              InputChip(
+                                label: Text(time),
+                                onDeleted: times.length <= 1
+                                    ? null
+                                    : () => setState(() => times.remove(time)),
+                              ),
+                            TextButton.icon(
+                              onPressed: times.length >= 24 ? null : addTime,
+                              icon: const Icon(Icons.add),
+                              label: const Text('添加时间'),
+                            ),
+                          ],
+                        ),
+                    ],
                   ),
-                SwitchListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text('仅内容变化时推送'),
-                  value: onlyChanged,
-                  onChanged: (v) => setState(() => onlyChanged = v),
-                ),
-                const SizedBox(height: 20),
-                FilledButton(
-                  onPressed: busy ? null : submit,
-                  child: Text(busy ? '正在保存…' : '保存任务'),
-                ),
-              ],
+                  const SizedBox(height: 8),
+                  FilledButton(
+                    onPressed: busy ? null : submit,
+                    child: Text(busy ? '正在保存…' : '保存任务'),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
       ),
-    ),
-  );
+    );
+  }
 }

@@ -2,7 +2,6 @@ import '../../ui/theme.dart';
 import '../../ui/selection_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'studio_page.dart';
 import 'subscription_style.dart';
 import 'ai_vendors.dart';
 
@@ -12,9 +11,14 @@ class ServerConfigurationPage extends StatefulWidget {
     required this.load,
     required this.save,
     this.models,
+    this.revealKey,
+    this.testConnection,
   });
   final Map<String, dynamic> Function() load;
   final Future<List<String>> Function(Map<String, dynamic>)? models;
+  final Future<String> Function(String id)? revealKey;
+  final Future<Map<String, dynamic>> Function(Map<String, dynamic>)?
+  testConnection;
   final Future<void> Function(Map<String, dynamic>) save;
   @override
   State<ServerConfigurationPage> createState() =>
@@ -31,6 +35,8 @@ class _ServerConfigurationPageState extends State<ServerConfigurationPage> {
         builder: (_) => _ProviderEditor(
           provider: provider,
           models: widget.models,
+          revealKey: widget.revealKey,
+          testConnection: widget.testConnection,
           save: (values) => widget.save({
             'action': 'saveProvider',
             'revision': revision,
@@ -73,7 +79,10 @@ class _ServerConfigurationPageState extends State<ServerConfigurationPage> {
     final plugin = studioItems(
       widget.load()['plugins'],
     ).where((plugin) => plugin['id'] == task['pluginId']).firstOrNull;
-    return (plugin?['capabilities'] as List? ?? []).contains('ai.tools') ||
+    final caps = plugin?['capabilities'] as List? ?? [];
+    return caps.contains('ai.required') ||
+        caps.contains('ai.optional') ||
+        caps.contains('ai.tools') ||
         (task['config'] as Map?)?['useAI'] == true;
   }
 
@@ -344,8 +353,17 @@ class _ServerConfigurationPageState extends State<ServerConfigurationPage> {
 }
 
 class _ProviderEditor extends StatefulWidget {
-  const _ProviderEditor({this.provider, required this.save, this.models});
+  const _ProviderEditor({
+    this.provider,
+    required this.save,
+    this.models,
+    this.revealKey,
+    this.testConnection,
+  });
   final Future<List<String>> Function(Map<String, dynamic>)? models;
+  final Future<String> Function(String id)? revealKey;
+  final Future<Map<String, dynamic>> Function(Map<String, dynamic>)?
+  testConnection;
   final Map<String, dynamic>? provider;
   final Future<void> Function(Map<String, dynamic>) save;
   @override
@@ -353,6 +371,7 @@ class _ProviderEditor extends StatefulWidget {
 }
 
 class _ProviderEditorState extends State<_ProviderEditor> {
+  static const _savedKeyMask = '••••••••••••••••';
   final form = GlobalKey<FormState>();
   late final name = TextEditingController(
     text: widget.provider?['name'] as String? ?? '',
@@ -366,15 +385,94 @@ class _ProviderEditorState extends State<_ProviderEditor> {
   late final limit = TextEditingController(
     text: '${widget.provider?['maxOutputTokens'] ?? 8000}',
   );
-  final key = TextEditingController();
-  bool busy = false, visible = false;
+  late final bool hasSavedKey = widget.provider?['hasKey'] == true;
+  late bool usingSavedMask = hasSavedKey;
+  late final key = TextEditingController(
+    text: hasSavedKey ? _savedKeyMask : '',
+  );
+  bool busy = false, visible = false, testing = false;
   String? error;
+  String? testSuccess;
+
+  String get effectiveKey => usingSavedMask ? '' : key.text.trim();
+
   @override
   void dispose() {
     for (final controller in [name, endpoint, model, limit, key]) {
       controller.dispose();
     }
     super.dispose();
+  }
+
+  Future<void> toggleKeyVisibility() async {
+    if (visible) {
+      setState(() => visible = false);
+      return;
+    }
+    if (usingSavedMask &&
+        widget.revealKey != null &&
+        widget.provider?['id'] != null) {
+      setState(() {
+        busy = true;
+        error = null;
+      });
+      try {
+        final realKey = await widget.revealKey!(
+          widget.provider!['id'] as String,
+        );
+        if (!mounted) return;
+        setState(() {
+          usingSavedMask = false;
+          key.text = realKey;
+          visible = true;
+        });
+      } on PlatformException catch (failure) {
+        if (mounted) setState(() => error = failure.message ?? '无法读取已保存密钥');
+      } catch (_) {
+        if (mounted) setState(() => error = '无法读取已保存密钥');
+      } finally {
+        if (mounted) setState(() => busy = false);
+      }
+      return;
+    }
+    setState(() => visible = true);
+  }
+
+  Future<void> testAI() async {
+    FocusManager.instance.primaryFocus?.unfocus();
+    if (effectiveKey.isEmpty && !hasSavedKey) {
+      setState(() => error = '请先输入 API Key');
+      return;
+    }
+    if (model.text.trim().isEmpty) {
+      setState(() => error = '请先选择或填写模型 ID');
+      return;
+    }
+    if (widget.testConnection == null) return;
+    setState(() {
+      testing = true;
+      error = null;
+      testSuccess = null;
+    });
+    try {
+      final result = await widget.testConnection!({
+        'id': widget.provider?['id'],
+        'baseUrl': endpoint.text.trim(),
+        'model': model.text.trim(),
+        'key': effectiveKey,
+      });
+      if (!mounted) return;
+      final ms = result['latencyMs'];
+      setState(
+        () => testSuccess = ms != null ? '连接成功（响应耗时 $ms ms）' : '连接成功，模型已响应',
+      );
+    } on PlatformException catch (failure) {
+      if (mounted) setState(() => error = failure.message ?? '测试连接失败');
+    } catch (_) {
+      if (mounted) setState(() => error = '测试连接失败，请检查地址、密钥与模型 ID');
+    } finally {
+      if (mounted) setState(() => testing = false);
+    }
   }
 
   Future<void> submit() async {
@@ -390,7 +488,7 @@ class _ProviderEditorState extends State<_ProviderEditor> {
         'baseUrl': endpoint.text.trim(),
         'model': model.text.trim(),
         'maxOutputTokens': int.parse(limit.text),
-        'key': key.text.trim(),
+        'key': effectiveKey,
       });
       if (mounted) Navigator.pop(context);
     } on PlatformException catch (failure) {
@@ -420,18 +518,19 @@ class _ProviderEditorState extends State<_ProviderEditor> {
       vendorId = id;
       endpoint.text = vendor.baseUrl;
       name.text = vendor.name;
+      usingSavedMask = false;
       key.clear();
       model.clear();
       availableModels = [];
       error = null;
+      testSuccess = null;
     });
   }
 
   Future<void> chooseModel() async {
     FocusManager.instance.primaryFocus?.unfocus();
-    if (key.text.trim().isEmpty &&
-        !(widget.provider?['hasKey'] == true &&
-            endpoint.text == widget.provider?['baseUrl'])) {
+    if (effectiveKey.isEmpty &&
+        !(hasSavedKey && endpoint.text == widget.provider?['baseUrl'])) {
       setState(() => error = '请先输入当前厂商的 API Key');
       return;
     }
@@ -444,7 +543,7 @@ class _ProviderEditorState extends State<_ProviderEditor> {
       availableModels = await widget.models!({
         'id': widget.provider?['id'],
         'baseUrl': endpoint.text.trim(),
-        'key': key.text.trim(),
+        'key': effectiveKey,
       });
       if (!mounted) return;
       setState(() => busy = false);
@@ -528,25 +627,34 @@ class _ProviderEditorState extends State<_ProviderEditor> {
                   obscureText: !visible,
                   autocorrect: false,
                   enableSuggestions: false,
+                  onTap: () {
+                    if (usingSavedMask) {
+                      setState(() {
+                        usingSavedMask = false;
+                        key.clear();
+                      });
+                    }
+                  },
                   onChanged: (_) {
+                    if (usingSavedMask) usingSavedMask = false;
                     availableModels = [];
+                    testSuccess = null;
                   },
                   decoration: InputDecoration(
                     labelText: 'API Key',
-                    helperText: widget.provider?['hasKey'] == true
-                        ? '已加密保存，留空使用原密钥'
+                    helperText: hasSavedKey && usingSavedMask
+                        ? '已加密保存，点击右侧眼睛可明文查看，或点击重新输入'
                         : '加密保存在服务器',
                     suffixIcon: IconButton(
-                      tooltip: visible ? '隐藏密钥' : '显示输入的密钥',
-                      onPressed: () => setState(() => visible = !visible),
+                      tooltip: visible ? '隐藏密钥' : '明文查看密钥',
+                      onPressed: busy ? null : toggleKeyVisibility,
                       icon: Icon(
                         visible ? Icons.visibility_off : Icons.visibility,
                       ),
                     ),
                   ),
                   validator: (value) =>
-                      widget.provider?['hasKey'] != true &&
-                          (value == null || value.trim().isEmpty)
+                      !hasSavedKey && (value == null || value.trim().isEmpty)
                       ? '请填写 API Key'
                       : null,
                 ),
@@ -604,8 +712,53 @@ class _ProviderEditorState extends State<_ProviderEditor> {
                   ],
                 ),
                 const SizedBox(height: 16),
+                if (testSuccess != null)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 10,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Theme.of(
+                          context,
+                        ).colorScheme.primaryContainer.withValues(alpha: .45),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.check_circle_outline,
+                            size: 18,
+                            color: Theme.of(context).colorScheme.primary,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(child: Text(testSuccess!)),
+                        ],
+                      ),
+                    ),
+                  ),
+                if (widget.testConnection != null) ...[
+                  OutlinedButton.icon(
+                    onPressed: busy || testing || model.text.trim().isEmpty
+                        ? null
+                        : testAI,
+                    icon: testing
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.network_check_rounded, size: 18),
+                    label: Text(testing ? '正在测试连接…' : '测试连接'),
+                  ),
+                  const SizedBox(height: 10),
+                ],
                 FilledButton(
-                  onPressed: model.text.trim().isEmpty ? null : submit,
+                  onPressed: busy || testing || model.text.trim().isEmpty
+                      ? null
+                      : submit,
                   child: const Text('保存配置'),
                 ),
               ],

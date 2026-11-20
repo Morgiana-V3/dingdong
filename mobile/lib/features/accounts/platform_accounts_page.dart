@@ -24,18 +24,23 @@ class PlatformAccountsPage extends StatefulWidget {
 }
 
 class _PlatformAccountsPageState extends State<PlatformAccountsPage> {
-  bool busy = false;
-  String? error;
-  String? notice;
+  String? busyAuthId;
+  final Map<String, String> cardErrors = {};
+  final Map<String, String> cardNotices = {};
 
-  Future<void> act(String action, String platform) async {
+  bool get busy => busyAuthId != null;
+
+  Future<void> act(String action, Map<String, dynamic> entry) async {
+    final authId = entry['id'] as String;
+    final authType = entry['type'] as String? ?? 'web-cookie';
+    final ready = entry['state'] == 'ready';
     if (busy) return;
     if (action == 'logout') {
       final confirmed = await showAppSheet<bool>(
         context: context,
         builder: (context) => SheetDialog(
-          title: const Text('退出服务器账号？'),
-          content: const Text('依赖此账号的任务将等待重新登录，已创建的任务会保留。'),
+          title: const Text('清除服务器凭据？'),
+          content: const Text('依赖此凭据的任务将等待重新授权，已创建的任务会保留。'),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context, false),
@@ -43,43 +48,104 @@ class _PlatformAccountsPageState extends State<PlatformAccountsPage> {
             ),
             FilledButton(
               onPressed: () => Navigator.pop(context, true),
-              child: const Text('退出账号'),
+              child: const Text('清除凭据'),
             ),
           ],
         ),
       );
       if (confirmed != true || !mounted) return;
     }
+    String? tokenInput;
+    if (action == 'login' && authType == 'token') {
+      final controller = TextEditingController();
+      tokenInput = await showAppSheet<String>(
+        context: context,
+        builder: (context) => SheetDialog(
+          title: Text('配置 ${entry['name']} 凭据'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if ((entry['help'] as String? ?? '').isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: Text(entry['help'] as String),
+                ),
+              TextField(
+                controller: controller,
+                obscureText: true,
+                decoration: InputDecoration(
+                  labelText: 'Token / 密钥',
+                  hintText: entry['placeholder'] as String?,
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, controller.text.trim()),
+              child: const Text('保存并验证'),
+            ),
+          ],
+        ),
+      );
+      controller.dispose();
+      if (tokenInput == null || tokenInput.isEmpty || !mounted) return;
+    }
     setState(() {
-      busy = true;
-      error = null;
-      notice = null;
+      busyAuthId = authId;
+      cardErrors.remove(authId);
+      cardNotices.remove(authId);
     });
     try {
-      if (action == 'login') {
-        final message = await InboxRepository.channel.invokeMethod<String>(
-          'platformLogin',
-          {'platform': platform},
-        );
-        if (mounted) setState(() => notice = message ?? '已返回，尚未完成授权');
+      if (action == 'login' && authType == 'token') {
+        await InboxRepository.channel.invokeMethod<String>('platformAccounts', {
+          'action': 'import',
+          'authId': authId,
+          'command': jsonEncode({'token': tokenInput}),
+        });
+        if (mounted) setState(() => cardNotices[authId] = '凭据已验证并加密保存');
+      } else if (action == 'login') {
+        final message = await InboxRepository.channel
+            .invokeMethod<String>('platformLogin', {
+              'authId': authId,
+              'authName': entry['name'] as String? ?? authId,
+              'loginUrl': entry['loginUrl'] as String? ?? '',
+              'cookieDomains': (entry['cookieDomains'] as List? ?? [])
+                  .map((e) => '$e')
+                  .toList(),
+              'requiredCookies': (entry['requiredCookies'] as List? ?? [])
+                  .map((e) => '$e')
+                  .toList(),
+              'clearExisting': ready,
+            });
+        if (mounted) {
+          setState(() => cardNotices[authId] = message ?? '已返回，尚未完成授权');
+        }
       } else {
         await InboxRepository.channel.invokeMethod<String>('platformAccounts', {
           'action': action,
-          'platform': platform,
+          'authId': authId,
         });
         if (mounted) {
           setState(
-            () => notice = action == 'logout'
-                ? '已退出账号，相关任务等待登录'
-                : '账号可用，相关任务可以执行',
+            () => cardNotices[authId] = action == 'logout'
+                ? '已清除凭据，相关任务等待重新授权'
+                : '凭据有效，相关任务可以执行',
           );
         }
       }
       await widget.onChanged?.call();
     } on PlatformException catch (failure) {
-      if (mounted) setState(() => error = failure.message ?? '账号操作未完成，请重试');
+      if (mounted) {
+        setState(() => cardErrors[authId] = failure.message ?? '凭据操作未完成，请重试');
+      }
     } finally {
-      if (mounted) setState(() => busy = false);
+      if (mounted) setState(() => busyAuthId = null);
     }
   }
 
@@ -133,16 +199,6 @@ class _PlatformAccountsPageState extends State<PlatformAccountsPage> {
                 ),
               ),
             for (final entry in widget.requiredAccounts) accountCard(entry),
-            if (error != null)
-              Padding(
-                padding: const EdgeInsets.only(top: 16),
-                child: Text(error!, style: TextStyle(color: colors.error)),
-              ),
-            if (notice != null)
-              Padding(
-                padding: const EdgeInsets.only(top: 16),
-                child: Text(notice!),
-              ),
           ],
         ),
       ),
@@ -196,7 +252,7 @@ class _PlatformAccountsPageState extends State<PlatformAccountsPage> {
         ),
       );
     } else if (action != null && mounted) {
-      await act(action, entry['id'] as String);
+      await act(action, entry);
     }
   }
 
@@ -210,7 +266,11 @@ class _PlatformAccountsPageState extends State<PlatformAccountsPage> {
     final colors = Theme.of(context).colorScheme;
     final ready = entry['state'] == 'ready';
     final tasks = (entry['tasks'] as List? ?? []).cast<Map>();
-    final supported = ['bilibili', 'x', 'xiaohongshu'].contains(entry['id']);
+    final authType = entry['type'] as String? ?? 'web-cookie';
+    final supported =
+        authType == 'token' ||
+        ((entry['loginUrl'] as String? ?? '').startsWith('https://') &&
+            (entry['requiredCookies'] as List? ?? []).isNotEmpty);
     final account = entry['account'] as Map?;
     final name = account?['name'] as String?;
     final avatar = account?['avatar'] as String?;
@@ -223,58 +283,103 @@ class _PlatformAccountsPageState extends State<PlatformAccountsPage> {
         photo = null;
       }
     }
+    final authId = entry['id'] as String;
+    final cardBusy = busyAuthId == authId;
+    final cardError = cardErrors[authId];
+    final cardNotice = cardNotices[authId];
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Card(
-        child: ListTile(
-          onTap: busy || widget.serverError != null || !supported
-              ? null
-              : () => accountActions(entry),
-          leading: CircleAvatar(
-            radius: 19,
-            backgroundColor: colors.surfaceContainerHighest,
-            foregroundImage: photo,
-            onForegroundImageError: photo == null ? null : (_, _) {},
-            child: Text(
-              (entry['name'] as String).characters.firstOrNull ?? '？',
-              style: TextStyle(fontSize: 14, color: colors.onSurfaceVariant),
-            ),
-          ),
-          title: Text(
-            ready && name != null && name.trim().isNotEmpty
-                ? name
-                : entry['name'] as String,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontWeight: FontWeight.w700),
-          ),
-          subtitle: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                [
-                  if (ready) entry['name'],
-                  ready ? '已登录' : '等待登录',
-                  if (tasks.length > 1) '${tasks.length} 个任务',
-                ].join(' · '),
+        clipBehavior: Clip.antiAlias,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (cardBusy) const LinearProgressIndicator(minHeight: 2),
+            ListTile(
+              onTap: busy || widget.serverError != null || !supported
+                  ? null
+                  : () => accountActions(entry),
+              leading: CircleAvatar(
+                radius: 19,
+                backgroundColor: colors.surfaceContainerHighest,
+                foregroundImage: photo,
+                onForegroundImageError: photo == null ? null : (_, _) {},
+                child: Text(
+                  (entry['name'] as String).characters.firstOrNull ?? '？',
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: colors.onSurfaceVariant,
+                  ),
+                ),
               ),
-              if (tasks.length == 1)
-                Text(
-                  tasks.single['name'] as String,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+              title: Text(
+                ready && name != null && name.trim().isNotEmpty
+                    ? name
+                    : entry['name'] as String,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontWeight: FontWeight.w700),
+              ),
+              subtitle: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    [
+                      if (ready) entry['name'],
+                      cardBusy
+                          ? '正在检查…'
+                          : ready
+                          ? '已登录'
+                          : '等待登录',
+                      if (tasks.length > 1) '${tasks.length} 个任务',
+                    ].join(' · '),
+                  ),
+                  if (tasks.length == 1)
+                    Text(
+                      tasks.single['name'] as String,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  if (!ready && entry['message'] != null && cardError == null)
+                    Text(
+                      entry['message'] as String,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                ],
+              ),
+              trailing: cardBusy
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : supported
+                  ? const Icon(Icons.chevron_right, size: 18)
+                  : null,
+            ),
+            if (cardError != null || cardNotice != null)
+              Container(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 10),
+                decoration: BoxDecoration(
+                  color: cardError != null
+                      ? colors.errorContainer.withValues(alpha: .45)
+                      : colors.primaryContainer.withValues(alpha: .35),
+                  border: Border(
+                    top: BorderSide(
+                      color: colors.outlineVariant.withValues(alpha: .45),
+                    ),
+                  ),
                 ),
-              if (!ready && entry['message'] != null)
-                Text(
-                  entry['message'] as String,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
+                child: Text(
+                  cardError ?? cardNotice!,
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    color: cardError != null ? colors.error : colors.onSurface,
+                  ),
                 ),
-            ],
-          ),
-          trailing: supported
-              ? const Icon(Icons.chevron_right, size: 18)
-              : null,
+              ),
+          ],
         ),
       ),
     );

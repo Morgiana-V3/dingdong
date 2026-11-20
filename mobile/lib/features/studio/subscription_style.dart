@@ -1,4 +1,15 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+
+const digestPluginId = 'digest';
+
+List<Map<String, dynamic>> studioItems(dynamic value) => (value as List? ?? [])
+    .whereType<Map>()
+    .map((item) => Map<String, dynamic>.from(item))
+    .toList();
+
+String studioError(Object error) =>
+    error is PlatformException ? error.message ?? '无法连接插件引擎' : '操作未完成，请刷新后重试';
 
 class SubscriptionStyle extends StatelessWidget {
   const SubscriptionStyle({

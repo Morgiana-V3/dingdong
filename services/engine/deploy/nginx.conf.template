@@ -1,0 +1,43 @@
+# 将 SERVER_HOST 替换为你的域名并配置 HTTPS 证书。
+# Python Relay 监听 127.0.0.1:18080；Node Engine 监听 127.0.0.1:18890。
+server {
+    listen 80;
+    server_name SERVER_HOST;
+    location /.well-known/acme-challenge/ { root /var/www/dingdong-acme; }
+    location / {
+        proxy_pass http://127.0.0.1:18080;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_read_timeout 90s;
+        client_max_body_size 2m;
+    }
+}
+server {
+    listen 443 ssl;
+    server_name SERVER_HOST;
+    ssl_certificate /etc/letsencrypt/live/SERVER_HOST/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/SERVER_HOST/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    client_max_body_size 2m;
+
+    # 可选插件引擎接口（仅 HTTPS 暴露；Web 管理台仅限本机/SSH 隧道访问）
+    location /v1/engine/ {
+        proxy_pass http://127.0.0.1:18890;
+        proxy_set_header Host 127.0.0.1:18890;
+        proxy_read_timeout 65s;
+        proxy_send_timeout 65s;
+        client_max_body_size 64k;
+        add_header Cache-Control no-store always;
+    }
+
+    location / {
+        proxy_pass http://127.0.0.1:18080;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_read_timeout 90s;
+    }
+}

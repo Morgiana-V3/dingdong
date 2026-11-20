@@ -14,8 +14,12 @@ void main() {
           home: PlatformAccountsPage(
             requiredAccounts: [
               {
-                'id': 'x',
-                'name': 'X',
+                'id': 'custom-site',
+                'name': '某网站',
+                'type': 'web-cookie',
+                'loginUrl': 'https://example.com/login',
+                'cookieDomains': ['https://example.com'],
+                'requiredCookies': ['sid'],
                 'state': 'ready',
                 'account': {'id': '42', 'name': '测试昵称'},
                 'tasks': [],
@@ -45,14 +49,14 @@ void main() {
     },
   );
   testWidgets(
-    'required account names its dependent tasks and reuses the saved server connection',
+    'required generic web-cookie account passes plugin auth metadata to native login',
     (tester) async {
       MethodCall? login;
       bool refreshed = false;
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(InboxRepository.channel, (call) async {
             login = call;
-            return '服务器已验证登录与动态读取';
+            return '服务器已验证并保存凭据';
           });
       addTearDown(
         () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
@@ -63,11 +67,15 @@ void main() {
           home: PlatformAccountsPage(
             requiredAccounts: const [
               {
-                'id': 'bilibili',
-                'name': '哔哩哔哩',
+                'id': 'v2ex',
+                'name': 'V2EX',
+                'type': 'web-cookie',
+                'loginUrl': 'https://www.v2ex.com/signin',
+                'cookieDomains': ['https://www.v2ex.com'],
+                'requiredCookies': ['A2'],
                 'state': 'idle',
                 'tasks': [
-                  {'id': 'one', 'name': '关注视频日报'},
+                  {'id': 'one', 'name': '热门主题日报'},
                 ],
               },
             ],
@@ -77,15 +85,22 @@ void main() {
           ),
         ),
       );
-      await tester.tap(find.text('哔哩哔哩'));
+      await tester.tap(find.text('V2EX'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('登录并启用任务'));
       await tester.pumpAndSettle();
       expect(login?.method, 'platformLogin');
-      expect(login?.arguments, {'platform': 'bilibili'});
+      expect(login?.arguments, {
+        'authId': 'v2ex',
+        'authName': 'V2EX',
+        'loginUrl': 'https://www.v2ex.com/signin',
+        'cookieDomains': ['https://www.v2ex.com'],
+        'requiredCookies': ['A2'],
+        'clearExisting': false,
+      });
       expect(refreshed, isTrue);
-      expect(find.text('关注视频日报'), findsOneWidget);
-      expect(find.text('服务器已验证登录与动态读取'), findsOneWidget);
+      expect(find.text('热门主题日报'), findsOneWidget);
+      expect(find.text('服务器已验证并保存凭据'), findsOneWidget);
     },
   );
 }

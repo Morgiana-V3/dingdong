@@ -2,29 +2,29 @@ package app.dingdong.dingdong
 
 import android.app.Activity
 import android.content.Intent
+import android.content.res.ColorStateList
+import android.content.res.Configuration
+import android.graphics.Color
+import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.view.Gravity
+import android.view.View
 import android.view.WindowManager
 import android.webkit.CookieManager
+import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Button
 import android.widget.LinearLayout
+import android.widget.ProgressBar
+import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
-import android.widget.ProgressBar
-import android.view.View
-import android.view.Gravity
-import android.graphics.Color
-import android.graphics.drawable.GradientDrawable
-import android.content.res.Configuration
-import android.widget.ScrollView
-import android.content.res.ColorStateList
-import android.webkit.WebChromeClient
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -33,7 +33,11 @@ import org.json.JSONObject
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
-/** Runs in a separate process and WebView profile, isolated from received HTML. */
+/**
+ * Generic declarative Web Auth Bridge.
+ * Runs in an isolated process and WebView profile, driven entirely by plugin-declared
+ * loginUrl, cookieDomains, and requiredCookies from the server.
+ */
 class PlatformLoginActivity : Activity() {
     private lateinit var web: WebView
     private lateinit var status: TextView
@@ -56,27 +60,39 @@ class PlatformLoginActivity : Activity() {
     private lateinit var client: OkHttpClient
     private var endpoint = ""
     private var code = ""
-    private var platform = "bilibili"
-    private val platformName get() = when (platform) { "x" -> "X"; "xiaohongshu" -> "小红书"; else -> "哔哩哔哩" }
-    private val domain get() = when (platform) { "x" -> "x.com"; "xiaohongshu" -> "xiaohongshu.com"; else -> "bilibili.com" }
-    private val cookieURL get() = when (platform) { "x" -> "https://x.com/"; "xiaohongshu" -> "https://www.xiaohongshu.com/"; else -> "https://api.bilibili.com/" }
-    private val loginURL get() = when (platform) { "x" -> "https://x.com/i/flow/login"; "xiaohongshu" -> "https://www.xiaohongshu.com/explore"; else -> "https://passport.bilibili.com/h5-app/passport/login" }
+    private var authId = ""
+    private var authName = ""
+    private var loginUrl = ""
+    private var cookieDomains: List<String> = emptyList()
+    private var allowedHosts: Set<String> = emptySet()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         if (Build.VERSION.SDK_INT < 28) {
-            finishWithError("平台登录需要 Android 9 或更新版本")
+            finishWithError("网页登录需要 Android 9 或更新版本")
             return
         }
         try {
-            platform = intent.getStringExtra("platform") ?: "bilibili"
-            require(platform in listOf("bilibili", "x", "xiaohongshu")) { "不支持的平台" }
-            feedback.platform = platform
+            authId = intent.getStringExtra("authId") ?: ""
+            require(Regex("^[a-z][a-z0-9-]{0,63}$").matches(authId)) { "凭据标识无效" }
+            authName = (intent.getStringExtra("authName") ?: authId).take(80)
+            loginUrl = validatePublicHttpsUrl(intent.getStringExtra("loginUrl") ?: "")
+            cookieDomains = (intent.getStringArrayListExtra("cookieDomains") ?: arrayListOf())
+                .map { validatePublicHttpsUrl(it) }
+            require(cookieDomains.isNotEmpty()) { "插件未声明有效的 Cookie 域名" }
+            val requiredCookies = (intent.getStringArrayListExtra("requiredCookies") ?: arrayListOf())
+                .filter { it.isNotBlank() }
+            require(requiredCookies.isNotEmpty()) { "插件未声明必要 Cookie" }
+            allowedHosts = buildSet {
+                Uri.parse(loginUrl).host?.lowercase()?.let { add(baseDomain(it)) }
+                cookieDomains.forEach { d -> Uri.parse(d).host?.lowercase()?.let { add(baseDomain(it)) } }
+            }
+            feedback.requiredCookies = requiredCookies
             client = RelayNetwork.builder(this, intent.getBooleanExtra("directConnection", false))
                 .callTimeout(60, TimeUnit.SECONDS).retryOnConnectionFailure(false).build()
             endpoint = validateEndpoint(intent.getStringExtra("endpoint") ?: "")
             code = intent.getStringExtra("code") ?: ""
-            require(Regex("^[a-f0-9]{24}$").matches(code)) { "本次授权已失效，请返回账号页重新打开" }
+            require(Regex("^[a-f0-9]{24,64}$").matches(code)) { "本次授权已失效，请返回重新打开" }
             if (!profileInitialized) {
                 WebView.setDataDirectorySuffix("platform_login")
                 profileInitialized = true
@@ -105,7 +121,7 @@ class PlatformLoginActivity : Activity() {
             setOnClickListener { finish() }
         }, LinearLayout.LayoutParams(dp(48), dp(48)))
         toolbar.addView(TextView(this).apply {
-            text = "登录$platformName"
+            text = "登录 $authName"
             textSize = 20f
             setTextColor(if (darkTheme) Color.WHITE else Color.rgb(32, 34, 36))
             setTypeface(null, android.graphics.Typeface.BOLD)
@@ -152,7 +168,8 @@ class PlatformLoginActivity : Activity() {
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                 if (!request.isForMainFrame) return false
                 val uri = request.url
-                return uri.scheme != "https" || !(uri.host == domain || uri.host?.endsWith(".$domain") == true)
+                val host = uri.host?.lowercase() ?: return true
+                return uri.scheme != "https" || !allowedHosts.any { host == it || host.endsWith(".$it") }
             }
             override fun onPageFinished(view: WebView, url: String) {
                 CookieManager.getInstance().flush()
@@ -161,56 +178,114 @@ class PlatformLoginActivity : Activity() {
         }
         web.setDownloadListener { _, _, _, _, _ -> status.text = "请在网页登录，无需下载其他应用" }
         layout.addView(web, LinearLayout.LayoutParams(-1, 0, 1f))
+        val cardColor = if (darkTheme) Color.rgb(34, 37, 42) else Color.WHITE
+        val mutedColor = if (darkTheme) Color.rgb(170, 174, 180) else Color.rgb(100, 106, 114)
+        val borderColor = if (darkTheme) Color.rgb(52, 56, 64) else Color.rgb(228, 228, 222)
+        val sessionCard = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+            setPadding(dp(24), dp(28), dp(24), dp(24))
+            background = GradientDrawable().apply {
+                setColor(cardColor)
+                cornerRadius = dp(18).toFloat()
+                setStroke(dp(1), borderColor)
+            }
+            addView(TextView(this@PlatformLoginActivity).apply {
+                text = "✓"
+                textSize = 26f
+                gravity = Gravity.CENTER
+                setTextColor(primaryColor)
+                background = GradientDrawable().apply {
+                    shape = GradientDrawable.OVAL
+                    setColor(if (darkTheme) Color.argb(40, 255, 173, 149) else Color.argb(28, 172, 70, 43))
+                }
+            }, LinearLayout.LayoutParams(dp(56), dp(56)).apply { bottomMargin = dp(16) })
+            addView(TextView(this@PlatformLoginActivity).apply {
+                text = "已检测到 $authName 登录会话"
+                textSize = 18f
+                gravity = Gravity.CENTER
+                setTypeface(null, android.graphics.Typeface.BOLD)
+                setTextColor(if (darkTheme) Color.WHITE else Color.rgb(32, 34, 36))
+            })
+            addView(TextView(this@PlatformLoginActivity).apply {
+                text = "点击下方「授权给当前服务器」，即可把当前会话加密同步到服务器供对应插件使用。"
+                textSize = 14f
+                gravity = Gravity.CENTER
+                setTextColor(mutedColor)
+                setPadding(0, dp(10), 0, dp(14))
+            })
+            addView(TextView(this@PlatformLoginActivity).apply {
+                text = endpoint
+                textSize = 12.5f
+                gravity = Gravity.CENTER
+                setTextColor(mutedColor)
+                setPadding(dp(12), dp(6), dp(12), dp(6))
+                background = GradientDrawable().apply {
+                    setColor(surfaceColor)
+                    cornerRadius = dp(10).toFloat()
+                }
+            })
+        }
+        val sessionContainer = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setPadding(dp(20), dp(24), dp(20), dp(24))
+            addView(sessionCard, LinearLayout.LayoutParams(-1, -2))
+        }
         sessionView = ScrollView(this).apply {
             isFillViewport = true
             visibility = View.GONE
-            addView(TextView(this@PlatformLoginActivity).apply {
-                text = "确认授权后，服务器将使用当前账号读取订阅内容。"
-                textSize = 16f
-                gravity = Gravity.CENTER
-                setTextColor(if (darkTheme) Color.WHITE else Color.rgb(32, 34, 36))
-                setPadding(dp(24), dp(12), dp(24), dp(12))
-            })
+            addView(sessionContainer)
         }
         layout.addView(sessionView, LinearLayout.LayoutParams(-1, 0, 1f))
         val actions = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(20), dp(12), dp(20), dp(12))
+            setPadding(dp(20), dp(12), dp(20), dp(16))
         }
         upload = button("等待登录", true).apply {
             isEnabled = false
-            setOnClickListener { confirmUpload() }
+            setOnClickListener {
+                checkLogin()
+                if (feedback.canUpload) transfer(sessionCookie())
+            }
         }
-        actions.addView(upload, LinearLayout.LayoutParams(-1, -2))
-        clearLogin = button("切换登录账号", false).apply {
+        actions.addView(upload, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(8) })
+        clearLogin = button("清除会话并打开登录页", false).apply {
             setOnClickListener {
                 if (feedback.uploading) return@setOnClickListener
-                AppDialogs.builder(this@PlatformLoginActivity)
-                    .setTitle("切换手机登录账号？")
-                    .setMessage("将退出此登录窗口中的 ${platformName}账号，已授权的服务器账号不受影响。")
-                    .setNegativeButton("取消", null)
-                    .setPositiveButton("切换账号") { _, _ ->
-                        val manager = CookieManager.getInstance()
-                        for (part in sessionCookie().split(';')) {
-                            val name = part.substringBefore('=').trim()
-                            if (name.isNotEmpty()) {
-                                manager.setCookie(cookieURL, "$name=; Max-Age=0; Path=/; Domain=.$domain; Secure")
-                                manager.setCookie(cookieURL, "$name=; Max-Age=0; Path=/; Secure")
-                            }
-                        }
-                        manager.flush()
-                        feedback.reset()
-                        renderLogin()
-                        web.loadUrl(loginURL)
-                    }.show()
+                clearDomainCookies()
+                feedback.reset()
+                renderLogin()
+                web.loadUrl(loginUrl)
             }
         }
         actions.addView(clearLogin, LinearLayout.LayoutParams(-1, -2))
         layout.addView(actions)
         setContentView(layout)
         layout.requestApplyInsets()
+        if (intent.getBooleanExtra("clearExisting", false)) {
+            clearDomainCookies()
+        }
         renderLogin()
-        web.loadUrl(loginURL)
+        web.loadUrl(loginUrl)
+    }
+
+    private fun clearDomainCookies() {
+        val manager = CookieManager.getInstance()
+        for (domainUrl in cookieDomains) {
+            val host = Uri.parse(domainUrl).host ?: continue
+            val base = baseDomain(host)
+            val raw = manager.getCookie(domainUrl) ?: continue
+            for (part in raw.split(';')) {
+                val name = part.substringBefore('=').trim()
+                if (name.isNotEmpty()) {
+                    manager.setCookie(domainUrl, "$name=; Max-Age=0; Path=/; Domain=.$base; Secure")
+                    manager.setCookie(domainUrl, "$name=; Max-Age=0; Path=/; Domain=.$host; Secure")
+                    manager.setCookie(domainUrl, "$name=; Max-Age=0; Path=/; Secure")
+                }
+            }
+        }
+        manager.flush()
     }
 
     override fun onStart() {
@@ -224,8 +299,20 @@ class PlatformLoginActivity : Activity() {
         super.onStop()
     }
 
-    private fun sessionCookie(): String =
-        CookieManager.getInstance().getCookie(cookieURL) ?: ""
+    private fun sessionCookie(): String {
+        val manager = CookieManager.getInstance()
+        val merged = LinkedHashMap<String, String>()
+        for (domainUrl in cookieDomains) {
+            val raw = manager.getCookie(domainUrl) ?: continue
+            for (part in raw.split(';')) {
+                val kv = part.trim().split('=', limit = 2)
+                if (kv.size == 2 && kv[0].isNotBlank() && kv[1].isNotBlank()) {
+                    merged[kv[0]] = kv[1]
+                }
+            }
+        }
+        return merged.entries.joinToString("; ") { "${it.key}=${it.value}" }
+    }
 
     private fun checkLogin() {
         val detected = feedback.observe(sessionCookie())
@@ -252,40 +339,32 @@ class PlatformLoginActivity : Activity() {
         clearLogin.isEnabled = !feedback.uploading
     }
 
-    private fun confirmUpload() {
-        checkLogin()
-        if (!feedback.canUpload) return
-        AppDialogs.builder(this).setTitle("授权服务器使用此账号？")
-            .setMessage("将 ${platformName}登录会话发送到 $endpoint，用于服务器读取订阅内容。")
-            .setNegativeButton("取消", null)
-            .setPositiveButton("授权") { _, _ ->
-                checkLogin()
-                if (feedback.canUpload) transfer(sessionCookie())
-            }.show()
-    }
-
     private fun transfer(cookie: String) {
         if (!feedback.begin()) return
         renderLogin()
         worker.execute {
             try {
-                val request = Request.Builder().url("$endpoint/v1/accounts/$platform/import")
+                val request = Request.Builder().url("$endpoint/v1/engine/credentials/$authId/import")
                     .header("Authorization", "Bearer $code")
-                    .post(JSONObject().put("cookie", cookie).toString().toRequestBody("application/json; charset=utf-8".toMediaType())).build()
+                    .post(JSONObject().put("cookie", cookie).toString().toRequestBody("application/json; charset=utf-8".toMediaType()))
+                    .build()
                 client.newCall(request).execute().use { response ->
                     val result = JSONObject(response.body?.string() ?: "{}")
-                    check(response.isSuccessful) { result.optString("error", "服务器验证失败，请返回账号页重试") }
-                    val name = result.optJSONObject("account")?.optString("name") ?: "${platformName}账号"
+                    check(response.isSuccessful) { result.optString("error", "服务器验证失败，请返回重试") }
+                    val name = result.optJSONObject("account")?.optString("name")?.takeIf { it.isNotBlank() } ?: authName
                     runOnUiThread {
                         if (isFinishing || isDestroyed) return@runOnUiThread
-                        setResult(RESULT_OK, Intent().putExtra("message", "$name：服务器已验证登录与动态读取"))
+                        setResult(RESULT_OK, Intent().putExtra("message", "$name：服务器已验证并保存凭据"))
                         finish()
                     }
                 }
             } catch (error: Exception) {
                 runOnUiThread {
                     if (isFinishing || isDestroyed) return@runOnUiThread
-                    feedback.fail(if (error is IllegalStateException) error.message ?: "服务器验证失败" else "连接或验证未完成，请返回账号页检查服务器状态后重试")
+                    feedback.fail(
+                        if (error is IllegalStateException) error.message ?: "服务器验证失败"
+                        else "连接或验证未完成，请检查服务器状态后重试"
+                    )
                     renderLogin()
                 }
             }
@@ -318,9 +397,11 @@ class PlatformLoginActivity : Activity() {
         elevation = 0f
         stateListAnimator = null
         minHeight = dp(48)
-        setTextColor(if (primary) {
-            if (darkTheme) Color.BLACK else Color.WHITE
-        } else primaryColor)
+        setTextColor(
+            if (primary) {
+                if (darkTheme) Color.BLACK else Color.WHITE
+            } else primaryColor
+        )
         background = GradientDrawable().apply {
             setColor(if (primary) primaryColor else Color.TRANSPARENT)
             cornerRadius = dp(14).toFloat()
@@ -329,11 +410,44 @@ class PlatformLoginActivity : Activity() {
 
     companion object {
         private var profileInitialized = false
-                fun validateEndpoint(value: String): String {
+
+        fun baseDomain(host: String): String {
+            val parts = host.lowercase().split('.')
+            return if (parts.size >= 2) parts.takeLast(2).joinToString(".") else host.lowercase()
+        }
+
+        fun validatePublicHttpsUrl(value: String): String {
+            val uri = Uri.parse(value.trim())
+            val host = uri.host?.lowercase() ?: ""
+            require(uri.scheme == "https" && host.isNotEmpty() && uri.userInfo == null) {
+                "登录地址必须为合法的 HTTPS 网址"
+            }
+            val isPrivate = host == "localhost" ||
+                host.endsWith(".localhost") ||
+                host.endsWith(".local") ||
+                host.startsWith("127.") ||
+                host.startsWith("10.") ||
+                host.startsWith("192.168.") ||
+                host.startsWith("169.254.") ||
+                Regex("^172\\.(1[6-9]|2\\d|3[01])\\.").containsMatchIn(host) ||
+                host == "[::1]"
+            require(!isPrivate) { "登录地址不允许指向内网或本机" }
+            return value.trim()
+        }
+
+        fun validateEndpoint(value: String): String {
             val uri = Uri.parse(value.trim())
             val loopback = uri.host == "127.0.0.1" || uri.host == "localhost" || uri.host == "[::1]"
-            require(uri.host != null && uri.userInfo == null && uri.query == null && uri.fragment == null && (uri.path.isNullOrEmpty() || uri.path == "/")) { "当前服务器地址无效" }
-            require(uri.scheme == "https" || (uri.scheme == "http" && loopback)) { "登录会话只允许 HTTPS 或本机回环连接" }
+            require(
+                uri.host != null &&
+                    uri.userInfo == null &&
+                    uri.query == null &&
+                    uri.fragment == null &&
+                    (uri.path.isNullOrEmpty() || uri.path == "/")
+            ) { "当前服务器地址无效" }
+            require(uri.scheme == "https" || (uri.scheme == "http" && loopback)) {
+                "登录会话只允许 HTTPS 或本机回环连接"
+            }
             return value.trim().trimEnd('/')
         }
     }

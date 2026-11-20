@@ -1,90 +1,49 @@
 # 技术方案
 
-## 发送链路
+## 1. 发送与投递链路（核心：`services/relay` ↔ `mobile/`）
 
-电脑生成文档 → POST 消息 → 服务器 SQLite 暂存 → WebSocket 通知 ID → 手机 HTTP 下载正文 → 本地 SQLite 提交 → 手机确认 → 服务端清除正文。
+电脑脚本或插件引擎 → `POST /v1/messages` → Relay SQLite 暂存 → WebSocket 通知 ID → 手机 HTTP 下载正文 → 本地 SQLite 提交 → 手机确认回执 → Relay 清除正文并保留去重记录。
 
-API 接收成功返回 202，状态为 queued；手机确认后为 received。received 表示手机已落盘，不表示用户已读。手机本地的已读、收藏和删除不上传。
-
-服务器保留消息 ID、内容指纹、时间和确认时间，用于防止脚本重试复活已接收消息；不保留已确认正文。未确认队列上限 10,000 条或 256 MB，达到上限返回 507，不自动丢弃未送达消息。运行单 worker；连接协调目前为进程内实现。
-
-## 接口
-
-所有凭据使用 `Authorization: Bearer ...`，不放在 URL。
+- API 接收成功返回 `202`（`queued`）；手机落盘确认后为 `received`。`received` 表示手机已持久化保存，不表示用户已读。
+- Relay 保留消息 ID、内容指纹、创建与确认时间，防止重试复活已接收消息；不保存已确认正文。未确认队列上限 10,000 条或 256 MB，超限返回 `507`。
+- 单用户、单接收手机、单 worker 部署；发送密钥（`DINGDONG_SEND_TOKEN`）与接收密钥（`DINGDONG_READ_TOKEN`）严格隔离。
 
 | 路径 | 凭据 | 用途 |
 | --- | --- | --- |
-| GET /health | 无 | 健康检查，无业务数据 |
-| POST /v1/messages | 发送密钥 | 接收消息，重复 ID 且同内容幂等返回 |
-| GET /v1/messages/{id}/status | 发送密钥 | 查询 queued / received |
-| WS /v1/stream | 接收密钥 | 发送 pending ID 列表，15 秒补发未确认 ID |
-| GET /v1/messages/{id} | 接收密钥 | 下载正文 |
-| POST /v1/receipts | 接收密钥 | 本地提交后确认，清理服务器正文 |
+| `GET /health` | 无 | 健康检查 |
+| `POST /v1/messages` | 发送密钥 | 提交消息（重复 ID 同内容幂等，异内容 409） |
+| `GET /v1/messages/{id}/status` | 发送密钥 | 查询 `queued` / `received` |
+| `WS /v1/stream` | 接收密钥 | 推送待下载 ID 列表，15 秒补发未确认 ID |
+| `GET /v1/messages/{id}` | 接收密钥 | 下载待接收正文 |
+| `POST /v1/receipts` | 接收密钥 | 落盘确认并清理服务器正文 |
 
-提交字段：id、source、title、summary、format、content、priority。format 为 html/markdown/text，priority 为 normal/silent。第一版没有标题自动提取。
+## 2. Android 客户端（`mobile/`）
 
-同一接收凭据仅用于一部手机，新连接会替代旧连接。App 更换服务器时必须重新输入接收密钥，本地消息按服务器地址隔离 ID，历史内容保留。同一主机从标准 HTTP 端口升级为标准 HTTPS 端口时，允许复用密钥，并将原地址持久化为 `messageNamespace`，避免改变已收消息的去重 ID；后续保存仍保留该命名空间。跨主机、其他端口或协议降级不使用该例外。迁移到其他服务器后产生新的 ID 命名空间，应先完成旧队列接收。
+- **职责分离**：Flutter 负责界面与阅读交互；Kotlin 前台服务（`remoteMessaging`）负责 OkHttp WebSocket、下载、SQLite 持久化、本地 JSON 备份与系统通知。断线指数退避 2–60 秒，网络恢复触发重连。
+- **HTML 安全沙箱**：独立 WebView 渲染正文，保留作者内联 CSS，禁用 JavaScript 与页面可访问的原生 JS 桥；清除 `script / iframe / object / embed / base / link / meta[http-equiv]` 并注入严格 CSP，仅允许内嵌 `data:` 图片/字体/媒体。
+- **首帧同步转场**：通过 `ReaderFrameBridge` 与 Android `postVisualStateCallback` 等待首帧真实绘制完成后再从右侧滑入，支持取消与系统减少动态效果设置。
+- **服务器直连**：可选开启 `RelayNetwork` 物理网络绑定（`INTERNET` + `NOT_VPN`），仅作用于叮咚专用 OkHttp 客户端，不修改进程或其他 App 路由。
+- **引擎能力解耦**：收件箱与「订阅管理」独立工作；未部署插件引擎时「订阅管理」提示当前服务器未启用插件引擎，不影响收件箱收发。
 
-## Android
+## 3. 可选插件引擎（`services/engine/`）
 
-Flutter 管理界面与阅读交互；Kotlin 前台服务管理 OkHttp WebSocket、下载、SQLite 和系统通知。服务不依赖 Flutter 页面保持打开，采用 remoteMessaging 前台服务类型，并显示常驻通知。断线指数退避 2–60 秒；网络恢复触发重连。
+基于 `@cordisjs/core`（Koishi 同源插件内核）构建，无浏览器（Playwright）依赖，镜像轻量：
 
-不承诺强行停止、关闭通知或系统限制后台时即时送达。已启用接收时，通过 BOOT_COMPLETED 和 MY_PACKAGE_REPLACED 尝试恢复前台服务；重新打开应用也会恢复尚未运行的接收服务。通知被关闭时仍可接收保存，但无法提示。
+- **动态插件加载**：启动时扫描 `PLUGINS_DIR`（默认 `./plugins`，Docker 挂载 `/app/plugins`）加载 `*/index.ts`（兼容 `.mts / .mjs / .js`），单个插件出错自动隔离。
+- **宿主能力注入（`ctx` / `job`）**：
+  - `ctx.source.register(def)`：注册内容源、通用表单原语（`text / textarea / number / boolean / select / stringList / secret / tasks`）及可选 `auth` 声明。
+  - `ctx.http`：统一超时、代理与取消信号。
+  - `job.ai`：复用 AES-256-GCM 加密保存的 AI 服务商配置（支持 `generate` 与结构化 `json`）。
+  - `job.state` + Outbox 原子投递：投递前原子落盘待发消息，确认 Relay 接收后再提交新 `state`；失败或重启复用原消息 ID 与正文重试。
+  - 渲染与预览：自动将 `articles` / `markdown` / `html` / `text` 转为自包含 HTML、压缩内嵌图片、校验 ≤ 1 MB、生成卡片头图元数据与可选外文双语切换。
 
-原生存储操作在工作线程执行。Flutter 仅在前台每 3 秒刷新本地列表与接收状态，进入后台停止界面刷新；不使用轮询服务器替代长连接。
+## 4. 通用声明式凭据与 Web 登录桥
 
-## HTML
-
-HTML 使用 WebView，独立于 Flutter 主界面。保留 HTML 正文 CSS，不提供阅读模式。HTML 直接呈现作者排版；普通文本和 Markdown 的消息标题置于正文中随内容滚动。顶部提供返回、收藏与更多操作，来源和时间等元信息收进“消息信息”。脚本执行关闭，无原生 JS 桥；清除 script、iframe、object、embed、base、link 和 http-equiv 元信息，插入限制性 CSP。
-
-仅加载内嵌图片、字体和媒体数据，外部链接确认后交给原生白名单路由：X、贴吧、小红书和 B 站优先使用指定包的可浏览 ACTION_VIEW，缺少应用时回退到网页。原帖 ID 按字符串处理，不损失大整数精度；不解析外部 intent 的组件、flags 或 extras。读取密钥仅由原生网络层使用，不交给 WebView。这里的“原样”指保留静态布局，不表示提供完整浏览器执行环境。
-
-服务器直连为可选连接设置，默认关闭。开启时 `RelayNetwork` 为服务器专用 OkHttp 客户端选择具有 INTERNET/NOT_VPN 能力的物理网络，绑定该网络的 socketFactory 与 DNS，并关闭该客户端的 HTTP 代理；不绑定整个进程、不改变其他 App 的网络。后台接收、正文与回执、诊断和 Studio 控制共用此策略。VPN 是否允许绕过由 Android/VPN 软件决定，失败时显示明确提示。后台监听默认网络与物理网络变化并重建客户端，避免复用过期连接。
-
-## Studio 控制链路
-
-手机沿用原生网络层的接收凭据，通过 `GET /v1/studio` 获取在线状态和订阅快照，通过 `POST /v1/studio/commands` 提交带 session/revision 的设置命令。凭据不传入 Flutter 页面或 WebView。
-
-Studio 在用户选定叮咚渠道后，每 2 秒使用发送凭据调用 `POST /v1/studio/sync`，上传白名单订阅配置和上一批操作结果，取回待处理命令。快照不包含登录凭据、发送/AI 密钥、插件执行状态、本地路径或历史正文。服务端将两个方向的凭据隔离，限制请求体和待确认操作数量。
-
-命令仅支持 saveTask、setEnabled、deleteTask；Studio 复用本地任务校验与保存逻辑。配置摘要 revision 防止覆盖并发编辑；调度进度和运行状态不改变配置版本。每个命令最多下发一次、20 秒超时，超时或服务重启后不重新排队。确认丢失时手机提示刷新核实，不自动重试写操作。15 秒未收到同步即判为离线，离线不可提交操作。控制快照/命令只存内存，不影响收件箱 SQLite 的落盘确认语义。仍需单 worker 部署。
-
-## 后续扩展
-
-后续仍可扩展：自包含附件包、多个发送密钥管理、厂商推送、多端同步。AI 不属于第一版必需能力。
-
-## 本地管理与备份
-
-数据库 v2 保留 v1 消息，新增正文纯文本字段与删除截止时间；迁移时回填正文文字，去除脚本、样式和图片编码。查询在原生工作线程执行，标题/摘要/来源/正文匹配和接收日期范围过滤后返回摘要片段。
-
-批量动作在 SQLite 事务中提交。删除先隐藏记录，10 秒后清理正文与搜索文字；界面提供 8 秒撤销入口。清理后保留 ID，避免服务端补发使已删除消息复活。进程中断时，下次查询继续清理过期删除记录。
-
-备份 v2 流式导出，包含本地 ID、正文、图片、已读、收藏和来源静默设置。导入支持 v1/v2，在事务内校验并合并；重复 ID（包括本地删除标记）不覆盖，非法数据整体回滚。备份与数据库迁移都不改写连接凭据。
-
-HTML 图片通过本地专用导航地址打开 Flutter 图片查看器，无 JavaScript 桥；仅解码支持的内嵌 PNG/JPEG/GIF/WebP。保存图片通过 Android MediaStore 或旧系统文档选择器完成。
-
-正文在准备好首帧后从右侧滑入，返回时向右退出。点击时临时捕获收件箱画面（仅内存、像素比最多 2），让 WebView 按实际阅读区域尺寸在其后保持挂载和绘制。HTML 加载完成后，经 Android postVisualStateCallback、原生绘制及 Flutter 帧同步，再启动滑入；不是用固定延迟假定内容已经准备好。准备超过 250 ms 显示可取消状态，整体超时 15 秒返回列表并提示重试。截图在路由完全关闭后释放，不保存到文件；取消和销毁时移除定时器、原生绘制监听与未完成请求。已读在首帧准备成功后更新。
-
-ReaderFrameBridge 通过 webview_flutter_android 的实例标识查找原生 WebView，只提供绘制等待与取消方法，没有向 HTML 添加 JavaScript 或页面桥接。图片预览仍先解码选中图片再淡入图库，返回保留同一 WebView 和滚动位置。系统减少动态效果时关闭动画；正文打开期间及返回转场完成前不重排底层消息列表。
-
-## 同服务器平台账号
-
-Node/Cordis 账号服务监听服务器回环端口，Nginx 通过 HTTPS 暴露 `/v1/accounts/bilibili` 及 `/v1/subscriptions` 相关接口。原消息接口继续转发 Python 中转；HTTP 保留兼容性。账号查询、验证、退出及申请配对使用现有接收凭据。导入使用 10 分钟、单次、仅导入权限的配对码，提交即消耗；发送密钥和 Web 管理会话不能替代这两类授权。请求不跟随重定向。
-
-App 原生网络层复用已保存地址和直连策略；标准 HTTP 自动选择同主机 HTTPS。密码在对应平台官方页面输入，Cookie 通过独立原生调用上传，并在服务端验证成功后加密保存。普通账号状态响应不包含 Cookie 或动态正文。手机已登录与服务器已验证是不同状态。
-
-接收密钥仅在用户点击显示时由原生安全窗口展示，不返回 Flutter 状态或 WebView，不记录日志、不进入备份。电脑 Studio 的旧任务保持独立；新的服务器任务使用服务器账号和执行引擎。
-
-## 服务器任务与账号依赖
-
-Cordis 插件注册订阅描述、字段、账号依赖及采集函数，`GET /v1/subscriptions` 返回实际注册结果；手机不伪造可用插件。服务器保存任务配置和 revision，`POST /v1/subscriptions/commands` 使用接收密钥进行 save/toggle/delete/run/cancel 及 AI 配置管理。配置版本不匹配返回 409；运行状态不改变配置版本。
-
-右侧账号列表由「已启用任务 → 插件账号依赖」去重生成，展示关联任务。未登录任务显示 needs_login，保持开启意图但不执行；登录可用后，调度器的下一次检查会执行到期任务。App 每 5 秒刷新快照，页面离开或进入后台停止刷新，编辑时保存最初 revision，避免覆盖其他端修改。
-
-服务器每 15 秒检查到期任务，串行执行并复用账号浏览器上下文；保存任务和发送中的 outbox 到数据卷。发送前原子落盘待发消息，重试/重启复用原消息 ID 和正文；中转接收后清除 outbox，提交各插件自己的去重状态（旧版任务保留最近 1000 个视频 ID）。中转只有收到手机落盘回执后才清正文，原投递语义保持不变。最多 30 个任务，不支持多实例共享同一任务文件。
-
-## Studio 插件订阅（Node）
-
-手机订阅管理以任务列表为入口，添加任务后选择服务器安装的插件，字段与 Studio 定义一致。服务端已适配 B 站指定 UP 主、贴吧兴趣精选、X 兴趣发现、小红书兴趣发现和统一推送；支持仅手动、固定间隔、北京时间定点、立即运行与停止。右侧账号需求来自已开启任务及汇总来源。任务缺少 UP 主、AI 或登录时分别提示等待配置，不以手机 Cookie 存在代替服务端验证。
-
-账号平台按 bilibili/x/xiaohongshu 隔离，复用当前服务器 HTTPS 与接收凭据。独立官方登录页只上传当前平台必要会话。B 站可读取关注列表选择 UP 主。X、小红书同时提供通过 SSH 访问服务器浏览器的备用登录入口。AI 配置在订阅管理右上角「服务器配置」中，加密保存在服务器。[订阅服务说明](../services/subscriptions/README.md)
+- 主框架与 App **零平台硬编码**，所有登录态需求均由插件通过 `auth` 声明：
+  - `type: 'token'`：App 弹窗输入 Token/API Key，经 HTTPS 加密上传服务端。
+  - `type: 'web-cookie'`：插件声明 `loginUrl`、`cookieDomains`、`requiredCookies` 与 `verify(credential, ctx)`。
+- **安全闭环**：
+  1. App 先以接收密钥调用 `POST /v1/engine/credentials/{id}/pair` 换取 10 分钟一次性配对码；
+  2. 独立进程 `PlatformLoginActivity`（隔离 WebView Profile，强制公网 `https://` 校验，拒绝内网/本地地址）加载官方登录页；
+  3. 检测到所有 `requiredCookies` 就位后，经用户确认通过一次性配对码上传至 `POST /v1/engine/credentials/{id}/import`；
+  4. 服务端调用该插件自己的 `auth.verify()` 验真并 AES-256-GCM 加密保存；运行时若插件抛出 `AuthExpiredError`，服务端自动标记凭据过期并向手机推送提醒消息。
