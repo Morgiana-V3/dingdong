@@ -1,0 +1,63 @@
+import type { PluginField } from 'dingdong-engine/sdk';
+
+export const xFields: PluginField[] = [
+  {
+    key: 'handles',
+    label: '公开账号列表',
+    type: 'stringList',
+    maxItems: 20,
+    group: '订阅内容',
+    groupDescription: '每行填写一个公开 X 用户名（可带或不带 @），也可配合下方关键词搜索。',
+    placeholder: '@OpenAI\n@GoogleDeepMind\n@NASA',
+  },
+  {
+    key: 'query',
+    label: '关键词搜索（可选）',
+    type: 'text',
+    maxLength: 200,
+    group: '订阅内容',
+    placeholder: '例如：Flutter OR "Node.js 22"',
+    help: '账号列表与关键词至少填写一项。',
+  },
+  {
+    key: 'includeReposts',
+    label: '包含转发推文',
+    type: 'boolean',
+    default: true,
+    group: '订阅内容',
+  },
+  {
+    key: 'limit',
+    label: '单次最多推送条数',
+    type: 'number',
+    default: 10,
+    min: 1,
+    max: 30,
+    integer: true,
+    group: '订阅内容',
+  },
+  {
+    key: 'filterModel',
+    label: 'AI 过滤模型',
+    type: 'aiProvider',
+    group: 'AI 智能处理',
+    groupDescription: '可选：按规则过滤不关心的推文，并用另一个模型生成中文导读总结。',
+    help: '留空则不启用 AI 过滤。',
+  },
+  {
+    key: 'filterPrompt',
+    label: '过滤要求',
+    type: 'textarea',
+    maxLength: 500,
+    group: 'AI 智能处理',
+    placeholder: '例如：只保留产品发布、开源项目更新或技术深度分享，过滤日常闲聊与营销抽奖。',
+    when: { field: 'filterModel', nonEmpty: true },
+  },
+  {
+    key: 'summaryModel',
+    label: 'AI 中文导读模型',
+    type: 'aiProvider',
+    group: 'AI 智能处理',
+    help: '留空则不生成顶部中文导读卡片。',
+  },
+];

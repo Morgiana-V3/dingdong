@@ -1,0 +1,67 @@
+import type { PluginField } from 'dingdong-engine/sdk';
+
+export const tiebaFields: PluginField[] = [
+  {
+    key: 'forums',
+    label: '贴吧名称列表',
+    type: 'stringList',
+    required: true,
+    maxItems: 20,
+    group: '监控贴吧',
+    groupDescription: '每行填写一个吧名（自动忽略末尾“吧”字），支持同时监控多个贴吧。',
+    placeholder: '摄影\n图拉丁\n显卡',
+  },
+  {
+    key: 'sort',
+    label: '排序与范围',
+    type: 'select',
+    default: 'latest_reply',
+    group: '监控贴吧',
+    options: [
+      { value: 'latest_reply', label: '最新回复', description: '按最近活跃回复排序' },
+      { value: 'latest_post', label: '最新发布', description: '按发帖时间由新到旧' },
+      { value: 'good', label: '仅看精品贴', description: '只拉取吧内加精帖子' },
+    ],
+  },
+  {
+    key: 'includePinned',
+    label: '包含置顶贴',
+    type: 'boolean',
+    default: false,
+    group: '监控贴吧',
+  },
+  {
+    key: 'limit',
+    label: '单次最多推送条数',
+    type: 'number',
+    default: 10,
+    min: 1,
+    max: 30,
+    integer: true,
+    group: '监控贴吧',
+  },
+  {
+    key: 'filterModel',
+    label: 'AI 过滤模型',
+    type: 'aiProvider',
+    group: 'AI 智能处理',
+    groupDescription: '可选：用轻量模型按规则过滤水贴，用强模型生成导读总结。',
+    help: '留空则不启用 AI 过滤。',
+  },
+  {
+    key: 'filterPrompt',
+    label: '过滤要求',
+    type: 'textarea',
+    maxLength: 500,
+    group: 'AI 智能处理',
+    placeholder: '例如：过滤掉纯水贴、广告和无意义灌水，只保留干货讨论、开箱评测或高赞问题。',
+    when: { field: 'filterModel', nonEmpty: true },
+  },
+  {
+    key: 'summaryModel',
+    label: 'AI 导读总结模型',
+    type: 'aiProvider',
+    group: 'AI 智能处理',
+    help: '留空则不生成顶部 AI 导读卡片。',
+  },
+];

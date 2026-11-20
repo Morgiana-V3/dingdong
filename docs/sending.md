@@ -41,6 +41,20 @@ python tools/render.py posts examples/templates/posts.json examples/posts.html
 python tools/send.py examples/posts.html --title "帖子汇总" --source "采集脚本" --wait 30
 ```
 
+## 自定义 HTML 卡片 `<meta>` 头
+
+发送 `format: "html"` 消息时，可在 `<head>` 中声明以下 `<meta>` 标签，精确控制手机收件箱列表里的卡片标题、摘要与右侧头图：
+
+```html
+<meta name="dingdong:title" content="自定义卡片标题" />
+<meta name="dingdong:description" content="自定义卡片摘要" />
+<meta name="dingdong:task" content="任务标签" />
+<meta name="dingdong:cover" content="hero-photo" />
+```
+
+- `dingdong:title` / `dingdong:description` 也兼容标准的 `property="og:title"` / `property="og:description"`。
+- `dingdong:cover` 可填写正文中某张 `<img id="hero-photo" ...>` 的 `id`（或直接填 `data:image/...`）；未指定时自动选取第一张正文配图，并跳过 `class="avatar"`、`class="emoji"`、`aria-hidden="true"` 等装饰图。
+
 ## 手机端
 
 - 点击正文中的内嵌图片全屏查看；双指缩放、原始比例下左右换图，双击切换缩放。右上角保存图片。Android 10 及以上保存到相册的 `Pictures/Dingdong`；旧系统使用文件选择器。

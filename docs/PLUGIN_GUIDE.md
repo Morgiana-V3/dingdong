@@ -93,7 +93,7 @@ export default definePlugin({
 | `aiProvider` | 从服务端已配置的 AI 服务中选择模型（可声明多个，如过滤模型 + 摘要模型） | `required`, `help` |
 | `remoteMultiSelect` | 带顶部搜索框的远程多选面板（配合 `optionsHandlers[key]` 动态拉取选项） | `required`, `maxItems`, `help` |
 
-> **分组与条件显隐**：任意字段都可附加 `group` / `groupDescription`（同组字段在 App 中自动聚合为同一卡片）以及 `when: { field, notEmpty?: true, equals?: ... }`（根据另一字段值动态展开/收起）。
+> **分组与条件显隐**：任意字段都可附加 `group` / `groupDescription`（同组字段在 App 中自动聚合为同一卡片）以及 `when: { field, nonEmpty?: true, equals?: ... }`（根据另一字段值动态展开/收起）。
 
 ---
 
@@ -145,6 +145,21 @@ auth: {
 - **自定义 HTML 模板目录（最推荐，可边写边在浏览器预览）**：使用 SDK 提供的 `renderHtmlTemplate(new URL('./template', import.meta.url), data)`。在插件内放 `template.html` + `style.css` + `render.js`（带 `testData`），还可在 `template/assets/` 下放置本地 `.svg / .png / .webp` 素材并直接用 `./assets/xxx.svg` 引用；用浏览器打开 `template.html` 即可实时调样式，服务端推送时自动通过 `linkedom` + `vm` 执行 `render(data)`、内联 CSS 与本地素材并剥离 `<script>`，输出纯静态安全 HTML（参考 [bilibili-feed/src/template](../services/engine/plugins/bilibili-feed/src/template/template.html)）。
 - **结构化 `articles`**：适合快速开发，由宿主默认模板排版并支持统一推送汇总。
 - **原始正文**：直接返回 `{ title, short, format: 'html' | 'markdown' | 'text', content }`。
+
+**收件箱卡片 `<meta>` 协议（控制列表页标题、摘要与头图）**：
+手机 App 收件箱列表会优先读取 HTML `<head>` 中的以下 `<meta>` 标签，让自定义模板精准控制消息卡片的外观：
+
+```html
+<head>
+  <meta name="dingdong:title" content="卡片主标题（也可使用 property='og:title'）" />
+  <meta name="dingdong:description" content="卡片摘要（也可使用 property='og:description'）" />
+  <meta name="dingdong:task" content="来源/任务标签" />
+  <!-- 指定某张正文 <img> 的 id 作为头图，或直接填 data:image/... -->
+  <meta name="dingdong:cover" content="cover-img-1" />
+</head>
+```
+
+- 未声明 `dingdong:cover` 时，App 会自动选取正文第一张有效配图（优先 `figure img` 与 `img.video-cover`），并自动跳过带 `class="avatar"`、`class="emoji"`、`aria-hidden="true"`、`role="presentation"` 的装饰图或头像。
 
 **硬约束**：
 1. 最终渲染后的 HTML 必须 ≤ **1,000,000 字节（1 MB）**。

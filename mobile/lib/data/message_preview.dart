@@ -70,16 +70,27 @@ _PreviewParts _previewParts((String, String) input) {
     description = '';
   }
   var hasTranslation = false;
+  var metaCover = '';
   if (input.$2 == 'html') {
     final head = document.head;
     String meta(String selector) =>
         head?.querySelector(selector)?.attributes['content']?.trim() ?? '';
     final originalTitle = meta('meta[name="dingdong:original-title"]');
-    final translatedTitle = meta('meta[property="og:title"]');
-    if (originalTitle.isNotEmpty && translatedTitle.isNotEmpty) {
+    final metaTitle = meta('meta[name="dingdong:title"]').isNotEmpty
+        ? meta('meta[name="dingdong:title"]')
+        : meta('meta[property="og:title"]');
+    final metaDesc = meta('meta[name="dingdong:description"]').isNotEmpty
+        ? meta('meta[name="dingdong:description"]')
+        : meta('meta[property="og:description"]');
+    metaCover = meta('meta[name="dingdong:cover"]');
+    if (originalTitle.isNotEmpty && metaTitle.isNotEmpty) {
       hasTranslation = true;
-      headline = translatedTitle;
-      description = meta('meta[property="og:description"]');
+    }
+    if (metaTitle.isNotEmpty) {
+      headline = metaTitle;
+    }
+    if (metaDesc.isNotEmpty) {
+      description = metaDesc;
     }
   }
   // Keep the photograph paired with the same post as the headline.
@@ -87,6 +98,23 @@ _PreviewParts _previewParts((String, String) input) {
   final images = root.querySelectorAll('img');
   final result = <Uint8List>[];
   final seen = <String>{};
+  void addImageSrc(String src) {
+    final trimmed = src.trim();
+    if (!trimmed.startsWith('data:image/') || !seen.add(trimmed)) return;
+    final embedded = EmbeddedImage.fromDataUri(trimmed, '');
+    if (embedded != null) result.add(embedded.bytes);
+  }
+
+  if (metaCover.isNotEmpty) {
+    if (metaCover.startsWith('data:image/')) {
+      addImageSrc(metaCover);
+    } else {
+      final explicit = document.getElementById(metaCover);
+      if (explicit != null && explicit.localName == 'img') {
+        addImageSrc(explicit.attributes['src'] ?? '');
+      }
+    }
+  }
   // Studio wraps article photos in figures. Prefer editorial images over
   // decorative artwork, keeping document order within each group.
   final preferred = root
@@ -97,10 +125,7 @@ _PreviewParts _previewParts((String, String) input) {
     ...images.where((img) => !preferred.contains(img)),
   ]) {
     if (_isDecoration(image)) continue;
-    final src = image.attributes['src']?.trim() ?? '';
-    if (!src.startsWith('data:image/') || !seen.add(src)) continue;
-    final embedded = EmbeddedImage.fromDataUri(src, '');
-    if (embedded != null) result.add(embedded.bytes);
+    addImageSrc(image.attributes['src'] ?? '');
   }
   return (
     headline: String.fromCharCodes(headline.runes.take(180)),
