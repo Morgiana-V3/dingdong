@@ -205,12 +205,21 @@ export class AIService {
   }
 
   forTask(providerId) {
-    if (!providerId || !this.providers.some((p) => p.id === providerId)) {
+    const provider = providerId ? this.providers.find((p) => p.id === providerId) : undefined;
+    if (!provider) {
       return null;
     }
     return {
-      generate: (input, signal) => this.generate(providerId, input, signal),
-      json: (input, signal) => this.json(providerId, input, signal),
+      config: {
+        id: provider.id,
+        name: provider.name,
+        baseUrl: provider.baseUrl,
+        apiKey: provider.secret,
+        model: provider.model,
+        maxOutputTokens: provider.maxOutputTokens,
+      },
+      generate: (input, signal) => this.generate(provider.id, input, signal),
+      json: (input, signal) => this.json(provider.id, input, signal),
     };
   }
 }

@@ -3,14 +3,14 @@ FROM ${NODE_IMAGE}
 
 WORKDIR /app
 COPY package.json package-lock.json* ./
-RUN npm install --omit=dev
+RUN npm install --omit=dev --ignore-scripts
 
 COPY src ./src
 COPY web ./web
 COPY sdk ./sdk
 COPY scripts ./scripts
 
-RUN mkdir -p /app/data /app/plugins && chown -R node:node /app/data /app/plugins
+RUN node scripts/link-sdk.ts && mkdir -p /app/data /app/plugins && chown -R node:node /app/data /app/plugins
 USER node
 
 ENV NODE_ENV=production

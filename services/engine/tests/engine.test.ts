@@ -239,6 +239,7 @@ test('renderHtmlTemplate compiles template.html + style.css + render.js into scr
     },
   );
   assert.match(html, /<style>/);
+  assert.match(html, /data:image\/svg\+xml;base64,/);
   assert.doesNotMatch(html, /<script/i);
   assert.doesNotMatch(html, /<link[^>]+stylesheet/i);
   assert.match(html, /测试视频标题/);

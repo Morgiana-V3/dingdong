@@ -10,6 +10,7 @@ export const FIELD_TYPES = new Set([
   'stringList',
   'secret',
   'aiProvider',
+  'remoteMultiSelect',
   'tasks',
 ]);
 
@@ -114,6 +115,7 @@ export function validateSourceDefinition(def) {
       : [],
     fields,
     auth: def.auth || null,
+    optionsHandlers: def.optionsHandlers || null,
     builtin: Boolean(def.builtin),
     run: def.run,
   };
@@ -244,6 +246,19 @@ export function validateConfig(
           throw new Error(`请选择 ${minItems}–${maxItems} 个内容源`);
         }
         validated[field.key] = unique.join(',');
+        break;
+      }
+      case 'remoteMultiSelect': {
+        const items = Array.isArray(value)
+          ? value.map((v) => String(v).trim()).filter(Boolean)
+          : typeof value === 'string'
+            ? value.split(',').map((v) => v.trim()).filter(Boolean)
+            : [];
+        const unique = [...new Set(items)];
+        const maxItems = field.maxItems ?? 100;
+        if (field.required && !unique.length) throw new Error(`请至少选择一项「${field.label}」`);
+        if (unique.length > maxItems) throw new Error(`「${field.label}」最多选择 ${maxItems} 项`);
+        validated[field.key] = unique;
         break;
       }
       case 'aiProvider': {

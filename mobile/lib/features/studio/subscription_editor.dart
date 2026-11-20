@@ -10,6 +10,7 @@ class SubscriptionEditor extends StatefulWidget {
     required this.snapshot,
     this.initialPluginId,
     this.saveSource,
+    this.loadOptions,
     this.asSource = false,
     this.task,
     required this.save,
@@ -18,6 +19,12 @@ class SubscriptionEditor extends StatefulWidget {
   final String? initialPluginId;
   final bool asSource;
   final Future<Map<String, dynamic>> Function(Map<String, dynamic>)? saveSource;
+  final Future<List<Map<String, dynamic>>> Function(
+    String pluginId,
+    String fieldKey,
+    String query,
+  )?
+  loadOptions;
   final Map<String, dynamic>? task;
   final Future<void> Function(Map<String, dynamic>) save;
   @override
@@ -52,6 +59,7 @@ class _SubscriptionEditorState extends State<SubscriptionEditor> {
           .cast<String>()
           .toList();
   final Map<String, TextEditingController> fields = {};
+  final Map<String, Map<String, String>> remoteOptionLabels = {};
   Map<String, dynamic> config = {};
   bool busy = false;
   String? error;
@@ -81,6 +89,14 @@ class _SubscriptionEditorState extends State<SubscriptionEditor> {
         case 'select':
         case 'aiProvider':
           config[key] = '${initial ?? ''}';
+        case 'remoteMultiSelect':
+          config[key] = initial is List
+              ? initial.map((e) => '$e').where((s) => s.isNotEmpty).toList()
+              : (initial as String? ?? '')
+                    .split(',')
+                    .map((s) => s.trim())
+                    .where((s) => s.isNotEmpty)
+                    .toList();
         case 'stringList':
           final text = initial is List
               ? initial.map((e) => '$e').join('\n')
@@ -287,6 +303,94 @@ class _SubscriptionEditorState extends State<SubscriptionEditor> {
         ),
       );
     }
+    if (field['type'] == 'remoteMultiSelect') {
+      final selected = (config[key] as List? ?? []).map((e) => '$e').toList();
+      final labels = remoteOptionLabels[key] ?? const {};
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    selected.isEmpty
+                        ? label
+                        : '$label（已选 ${selected.length} 项）',
+                    style: const TextStyle(
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                if (selected.isNotEmpty)
+                  TextButton(
+                    onPressed: () => setState(() => config[key] = <String>[]),
+                    child: const Text('清空'),
+                  ),
+              ],
+            ),
+            if (selected.isEmpty &&
+                (field['placeholder'] as String? ?? '').isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Text(
+                  field['placeholder'] as String,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
+            if (selected.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    for (final id in selected)
+                      InputChip(
+                        label: Text(labels[id] ?? id),
+                        onDeleted: () => setState(() {
+                          config[key] = selected
+                              .where((item) => item != id)
+                              .toList();
+                        }),
+                      ),
+                  ],
+                ),
+              ),
+            OutlinedButton.icon(
+              icon: const Icon(Icons.filter_list_rounded, size: 18),
+              label: Text(selected.isEmpty ? '打开列表搜索并多选' : '修改已选列表'),
+              onPressed: widget.loadOptions == null
+                  ? null
+                  : () async {
+                      final result = await showAppSheet<_RemoteSelectResult>(
+                        context: context,
+                        builder: (_) => _RemoteMultiSelectSheet(
+                          title: label,
+                          initialSelected: selected.toSet(),
+                          load: (q) => widget.loadOptions!(pluginId, key, q),
+                        ),
+                      );
+                      if (result != null && mounted) {
+                        setState(() {
+                          config[key] = result.values;
+                          remoteOptionLabels[key] = {
+                            ...?remoteOptionLabels[key],
+                            ...result.labels,
+                          };
+                        });
+                      }
+                    },
+            ),
+          ],
+        ),
+      );
+    }
     if (field['type'] == 'aiProvider') {
       final providers = studioItems(snapshotData['providers']);
       final current = config[key] as String? ?? '';
@@ -470,56 +574,113 @@ class _SubscriptionEditorState extends State<SubscriptionEditor> {
     }
   }
 
-  Widget _sectionCard(
-    BuildContext context, {
-    required String title,
-    String? subtitle,
-    required List<Widget> children,
-  }) {
+  bool _isFieldVisible(Map<String, dynamic> field) {
+    final condition = field['when'];
+    if (condition is! Map) return true;
+    final depKey = condition['field'] as String?;
+    if (depKey == null || depKey.isEmpty) return true;
+    final raw = fields.containsKey(depKey)
+        ? fields[depKey]!.text
+        : config[depKey];
+    if (condition['nonEmpty'] == true) {
+      if (raw == null) return false;
+      if (raw is String) return raw.trim().isNotEmpty;
+      if (raw is Iterable) return raw.isNotEmpty;
+      if (raw is bool) return raw;
+      return true;
+    }
+    if (condition.containsKey('equals')) {
+      return raw == condition['equals'];
+    }
+    return true;
+  }
+
+  List<Widget> _buildPluginFieldBlocks(
+    BuildContext context,
+    List<Map<String, dynamic>> pluginFields,
+  ) {
     final colors = Theme.of(context).colorScheme;
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(title, style: Theme.of(context).textTheme.titleMedium),
-            if (subtitle != null && subtitle.isNotEmpty) ...[
-              const SizedBox(height: 4),
+    final blocks = <Widget>[];
+    int i = 0;
+    while (i < pluginFields.length) {
+      final current = pluginFields[i];
+      final group = (current['group'] as String? ?? '').trim();
+      if (group.isEmpty) {
+        if (_isFieldVisible(current)) {
+          blocks.add(pluginField(current));
+        }
+        i++;
+        continue;
+      }
+      final grouped = <Map<String, dynamic>>[];
+      String? groupDesc;
+      while (i < pluginFields.length &&
+          ((pluginFields[i]['group'] as String? ?? '').trim() == group)) {
+        final f = pluginFields[i];
+        groupDesc ??= (f['groupDescription'] as String?)?.trim();
+        if (_isFieldVisible(f)) {
+          grouped.add(f);
+        }
+        i++;
+      }
+      if (grouped.isEmpty) continue;
+      blocks.add(
+        Container(
+          margin: const EdgeInsets.only(bottom: 14),
+          padding: const EdgeInsets.fromLTRB(14, 14, 14, 6),
+          decoration: BoxDecoration(
+            color: colors.surfaceContainerLow,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: colors.outlineVariant.withValues(alpha: .45),
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
               Text(
-                subtitle,
-                style: TextStyle(
-                  fontSize: 12.5,
-                  color: colors.onSurfaceVariant,
+                group,
+                style: const TextStyle(
+                  fontSize: 14.5,
+                  fontWeight: FontWeight.w700,
                 ),
               ),
+              if (groupDesc != null && groupDesc.isNotEmpty) ...[
+                const SizedBox(height: 3),
+                Text(
+                  groupDesc,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: colors.onSurfaceVariant,
+                  ),
+                ),
+              ],
+              const SizedBox(height: 12),
+              for (final field in grouped) pluginField(field),
             ],
-            const SizedBox(height: 12),
-            ...children,
-          ],
+          ),
         ),
-      ),
-    );
+      );
+    }
+    return blocks;
   }
+
+  Widget _flatHeading(BuildContext context, String text) => Padding(
+    padding: const EdgeInsets.only(top: 4, bottom: 10),
+    child: Text(
+      text,
+      style: TextStyle(
+        fontSize: 13,
+        fontWeight: FontWeight.w700,
+        color: Theme.of(context).colorScheme.onSurfaceVariant,
+      ),
+    ),
+  );
 
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     final pluginFields = studioItems(plugin['fields']);
-    final caps = (plugin['capabilities'] as List? ?? []);
-    final aiFields = pluginFields
-        .where((f) => f['type'] == 'aiProvider')
-        .toList();
-    final supportsAI =
-        aiFields.isNotEmpty ||
-        caps.contains('ai.required') ||
-        caps.contains('ai.optional') ||
-        caps.contains('ai.tools');
-    final requiresAI =
-        aiFields.any((f) => f['required'] == true) ||
-        caps.contains('ai.required') ||
-        caps.contains('ai.tools');
     final hasAuth = plugin['authId'] != null;
 
     return SubscriptionStyle(
@@ -549,148 +710,124 @@ class _SubscriptionEditorState extends State<SubscriptionEditor> {
                       padding: const EdgeInsets.only(bottom: 10),
                       child: InlineNotice(error!),
                     ),
-                  // 顶部插件身份卡
-                  Card(
-                    margin: const EdgeInsets.only(bottom: 12),
-                    child: Padding(
-                      padding: const EdgeInsets.all(14),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Expanded(
-                                child: Text(
-                                  plugin['name'] as String,
-                                  style: const TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                              ),
-                              if (widget.task == null && plugins.length > 1)
-                                TextButton(
-                                  onPressed: () async {
-                                    final selectable = plugins
-                                        .where(
-                                          (entry) =>
-                                              entry['legacy'] != true &&
-                                              (!widget.asSource ||
-                                                  entry['id'] !=
-                                                      digestPluginId),
-                                        )
-                                        .toList();
-                                    final next = await showChoiceSheet<String>(
-                                      context: context,
-                                      title: '切换插件',
-                                      selected: pluginId,
-                                      choices: [
-                                        for (final entry in selectable)
-                                          SheetChoice(
-                                            value: entry['id'] as String,
-                                            label: entry['name'] as String,
-                                            description:
-                                                entry['description'] as String?,
-                                          ),
-                                      ],
-                                    );
-                                    if (next != null &&
-                                        next != pluginId &&
-                                        mounted) {
-                                      setState(() {
-                                        pluginId = next;
-                                        resetConfig({});
-                                      });
-                                    }
-                                  },
-                                  child: const Text('更换插件'),
-                                ),
-                            ],
-                          ),
-                          if ((plugin['description'] as String? ?? '')
-                              .isNotEmpty) ...[
-                            const SizedBox(height: 4),
-                            Text(
-                              plugin['description'] as String,
-                              style: TextStyle(
-                                fontSize: 13,
-                                color: colors.onSurfaceVariant,
-                              ),
-                            ),
-                          ],
-                          if (hasAuth || supportsAI) ...[
-                            const SizedBox(height: 8),
-                            Wrap(
-                              spacing: 6,
-                              runSpacing: 6,
-                              children: [
-                                if (hasAuth)
-                                  SubscriptionStatus(
-                                    '保存开启后需在「所需账号」完成 ${plugin['authName'] ?? plugin['authId']} 登录',
-                                    color: colors.primary,
-                                  ),
-                                if (requiresAI)
-                                  SubscriptionStatus(
-                                    '需要 AI 配置',
-                                    color: colors.tertiary,
-                                  ),
-                                if (supportsAI && !requiresAI)
-                                  const SubscriptionStatus('可选 AI 增强'),
-                              ],
-                            ),
-                          ],
-                        ],
+
+                  // 轻量插件头部（无厚重卡片边框）
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 16),
+                    padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
+                    decoration: BoxDecoration(
+                      color: colors.surfaceContainerHighest.withValues(
+                        alpha: .45,
                       ),
+                      borderRadius: BorderRadius.circular(12),
                     ),
-                  ),
-
-                  // 分组 1：基本设置（编辑页只管配置，新建默认启用，启停在外部列表控制）
-                  _sectionCard(
-                    context,
-                    title: '基本设置',
-                    children: [
-                      TextFormField(
-                        controller: name,
-                        decoration: InputDecoration(
-                          labelText: '任务名称',
-                          hintText: '例如：${plugin['name']}',
-                        ),
-                        maxLength: 80,
-                        validator: (v) =>
-                            v == null || v.trim().isEmpty ? '请填写任务名称' : null,
-                      ),
-                    ],
-                  ),
-
-                  // 分组 2：插件自定义配置（完全由插件 Schema 驱动，含 aiProvider 字段）
-                  if (pluginFields.isNotEmpty)
-                    _sectionCard(
-                      context,
-                      title: '插件配置',
-                      subtitle: '以下表单由「${plugin['name']}」插件声明',
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        for (final field in pluginFields) pluginField(field),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                plugin['name'] as String,
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                            if (widget.task == null && plugins.length > 1)
+                              TextButton(
+                                onPressed: () async {
+                                  final selectable = plugins
+                                      .where(
+                                        (entry) =>
+                                            entry['legacy'] != true &&
+                                            (!widget.asSource ||
+                                                entry['id'] != digestPluginId),
+                                      )
+                                      .toList();
+                                  final next = await showChoiceSheet<String>(
+                                    context: context,
+                                    title: '切换插件',
+                                    selected: pluginId,
+                                    choices: [
+                                      for (final entry in selectable)
+                                        SheetChoice(
+                                          value: entry['id'] as String,
+                                          label: entry['name'] as String,
+                                          description:
+                                              entry['description'] as String?,
+                                        ),
+                                    ],
+                                  );
+                                  if (next != null &&
+                                      next != pluginId &&
+                                      mounted) {
+                                    setState(() {
+                                      pluginId = next;
+                                      resetConfig({});
+                                    });
+                                  }
+                                },
+                                child: const Text('更换插件'),
+                              ),
+                          ],
+                        ),
+                        if ((plugin['description'] as String? ?? '')
+                            .isNotEmpty) ...[
+                          const SizedBox(height: 2),
+                          Text(
+                            plugin['description'] as String,
+                            style: TextStyle(
+                              fontSize: 12.5,
+                              color: colors.onSurfaceVariant,
+                            ),
+                          ),
+                        ],
+                        if (hasAuth) ...[
+                          const SizedBox(height: 8),
+                          SubscriptionStatus(
+                            '保存开启后需在「所需账号」完成 ${plugin['authName'] ?? plugin['authId']} 登录',
+                            color: colors.primary,
+                          ),
+                        ],
                       ],
                     ),
+                  ),
 
-                  // 分组 3：调度与推送（宿主统一控制触发方式，去重由插件自行通过 state 管理）
-                  _sectionCard(
-                    context,
-                    title: '调度设置',
-                    children: [
-                      if (widget.asSource)
-                        const Padding(
-                          padding: EdgeInsets.only(bottom: 10),
-                          child: Text('来源随统一推送执行，默认暂停独立运行。'),
+                  // 根级平铺：任务名称与触发方式（不再用多余卡片包裹）
+                  TextFormField(
+                    controller: name,
+                    decoration: InputDecoration(
+                      labelText: '任务名称',
+                      hintText: '例如：${plugin['name']}',
+                    ),
+                    maxLength: 80,
+                    validator: (v) =>
+                        v == null || v.trim().isEmpty ? '请填写任务名称' : null,
+                  ),
+                  if (widget.asSource)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4, bottom: 12),
+                      child: Text(
+                        '来源随统一推送执行，默认暂停独立运行。',
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          color: colors.onSurfaceVariant,
                         ),
-                      if (!widget.asSource)
-                        choice('执行方式', scheduleType, [
-                          {'id': 'manual', 'name': '仅手动'},
-                          {'id': 'interval', 'name': '固定间隔'},
-                          {'id': 'daily', 'name': '每天定点（北京时间）'},
-                        ], (v) => scheduleType = v),
-                      if (scheduleType == 'interval')
-                        TextFormField(
+                      ),
+                    ),
+                  if (!widget.asSource) ...[
+                    const SizedBox(height: 4),
+                    choice('执行方式', scheduleType, [
+                      {'id': 'manual', 'name': '仅手动'},
+                      {'id': 'interval', 'name': '固定间隔'},
+                      {'id': 'daily', 'name': '每天定点（北京时间）'},
+                    ], (v) => scheduleType = v),
+                    if (scheduleType == 'interval')
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 10),
+                        child: TextFormField(
                           controller: minutes,
                           decoration: const InputDecoration(
                             labelText: '间隔（分钟）',
@@ -703,8 +840,11 @@ class _SubscriptionEditorState extends State<SubscriptionEditor> {
                                 : null;
                           },
                         ),
-                      if (scheduleType == 'daily')
-                        Wrap(
+                      ),
+                    if (scheduleType == 'daily')
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 10),
+                        child: Wrap(
                           spacing: 8,
                           children: [
                             for (final time in times)
@@ -721,8 +861,16 @@ class _SubscriptionEditorState extends State<SubscriptionEditor> {
                             ),
                           ],
                         ),
-                    ],
-                  ),
+                      ),
+                  ],
+
+                  // 插件配置区：未分组字段平铺，带 group 的字段自动聚合为语义分组卡片
+                  if (pluginFields.isNotEmpty) ...[
+                    const Divider(height: 24),
+                    _flatHeading(context, '插件配置'),
+                    ..._buildPluginFieldBlocks(context, pluginFields),
+                  ],
+
                   const SizedBox(height: 8),
                   FilledButton(
                     onPressed: busy ? null : submit,
@@ -733,6 +881,236 @@ class _SubscriptionEditorState extends State<SubscriptionEditor> {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _RemoteSelectResult {
+  const _RemoteSelectResult(this.values, this.labels);
+  final List<String> values;
+  final Map<String, String> labels;
+}
+
+class _RemoteMultiSelectSheet extends StatefulWidget {
+  const _RemoteMultiSelectSheet({
+    required this.title,
+    required this.initialSelected,
+    required this.load,
+  });
+  final String title;
+  final Set<String> initialSelected;
+  final Future<List<Map<String, dynamic>>> Function(String query) load;
+
+  @override
+  State<_RemoteMultiSelectSheet> createState() =>
+      _RemoteMultiSelectSheetState();
+}
+
+class _RemoteMultiSelectSheetState extends State<_RemoteMultiSelectSheet> {
+  final searchController = TextEditingController();
+  late final Set<String> selected = {...widget.initialSelected};
+  final Map<String, String> labels = {};
+  List<Map<String, dynamic>> allOptions = [];
+  bool loading = true;
+  String? error;
+  String query = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _fetch();
+  }
+
+  @override
+  void dispose() {
+    searchController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _fetch() async {
+    setState(() {
+      loading = true;
+      error = null;
+    });
+    try {
+      final list = await widget.load('');
+      if (!mounted) return;
+      for (final opt in list) {
+        final v = '${opt['value']}';
+        labels[v] = '${opt['label'] ?? v}';
+      }
+      setState(() {
+        allOptions = list;
+        loading = false;
+      });
+    } catch (failure) {
+      if (!mounted) return;
+      setState(() {
+        error = studioError(failure);
+        loading = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final kw = query.trim().toLowerCase();
+    final filtered = kw.isEmpty
+        ? allOptions
+        : allOptions.where((opt) {
+            final label = '${opt['label'] ?? ''}'.toLowerCase();
+            final value = '${opt['value'] ?? ''}'.toLowerCase();
+            final desc = '${opt['description'] ?? ''}'.toLowerCase();
+            return label.contains(kw) ||
+                value.contains(kw) ||
+                desc.contains(kw);
+          }).toList();
+
+    return SizedBox(
+      height: MediaQuery.sizeOf(context).height * 0.78,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 14, 12, 8),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    widget.title,
+                    style: const TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                IconButton(
+                  tooltip: '关闭',
+                  onPressed: () => Navigator.pop(context),
+                  icon: const Icon(Icons.close),
+                ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+            child: TextField(
+              controller: searchController,
+              decoration: InputDecoration(
+                prefixIcon: const Icon(Icons.search, size: 20),
+                hintText: '搜索名称或 ID…',
+                isDense: true,
+                suffixIcon: query.isEmpty
+                    ? null
+                    : IconButton(
+                        icon: const Icon(Icons.clear, size: 18),
+                        onPressed: () {
+                          searchController.clear();
+                          setState(() => query = '');
+                        },
+                      ),
+              ),
+              onChanged: (v) => setState(() => query = v),
+            ),
+          ),
+          if (loading) const LinearProgressIndicator(minHeight: 2),
+          Expanded(
+            child: error != null
+                ? Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            error!,
+                            textAlign: TextAlign.center,
+                            style: TextStyle(color: colors.error),
+                          ),
+                          const SizedBox(height: 12),
+                          OutlinedButton.icon(
+                            onPressed: _fetch,
+                            icon: const Icon(Icons.refresh, size: 18),
+                            label: const Text('重试'),
+                          ),
+                        ],
+                      ),
+                    ),
+                  )
+                : filtered.isEmpty && !loading
+                ? Center(
+                    child: Text(
+                      kw.isEmpty ? '列表为空' : '没有找到匹配「$query」的项',
+                      style: TextStyle(color: colors.onSurfaceVariant),
+                    ),
+                  )
+                : ListView.builder(
+                    itemCount: filtered.length,
+                    itemBuilder: (_, index) {
+                      final opt = filtered[index];
+                      final val = '${opt['value']}';
+                      final label = '${opt['label'] ?? val}';
+                      final desc = opt['description'] as String?;
+                      final checked = selected.contains(val);
+                      return CheckboxListTile(
+                        value: checked,
+                        title: Text(
+                          label,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        subtitle: desc != null && desc.isNotEmpty
+                            ? Text(
+                                desc,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              )
+                            : null,
+                        onChanged: (next) {
+                          setState(() {
+                            if (next == true) {
+                              selected.add(val);
+                              labels[val] = label;
+                            } else {
+                              selected.remove(val);
+                            }
+                          });
+                        },
+                      );
+                    },
+                  ),
+          ),
+          SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+              child: Row(
+                children: [
+                  TextButton(
+                    onPressed: selected.isEmpty
+                        ? null
+                        : () => setState(selected.clear),
+                    child: const Text('清空'),
+                  ),
+                  const Spacer(),
+                  FilledButton(
+                    onPressed: () => Navigator.pop(
+                      context,
+                      _RemoteSelectResult(selected.toList(), labels),
+                    ),
+                    child: Text(
+                      selected.isEmpty
+                          ? '全部（不筛选）'
+                          : '确定（已选 ${selected.length} 项）',
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

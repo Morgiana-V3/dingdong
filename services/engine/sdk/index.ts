@@ -3,6 +3,7 @@ import type { DingdongPluginModule, SourceDefinition } from './dingdong-plugin.d
 export type * from './dingdong-plugin.d.ts';
 export { AuthExpiredError } from '../src/credentials.ts';
 export { renderHtmlTemplate } from '../src/template-engine.ts';
+export { loadImage } from '../src/images.ts';
 
 /**
  * Helper for authoring Dingdong plugins with full TypeScript IntelliSense.

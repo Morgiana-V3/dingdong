@@ -253,6 +253,16 @@ class _SubscriptionManagementPageState extends State<SubscriptionManagementPage>
           },
           initialPluginId: plugin['id'] as String,
           task: task,
+          loadOptions: (pluginId, fieldKey, query) async {
+            final result = await widget.repository.subscriptions({
+              'action': 'fieldOptions',
+              'revision': snapshot!['revision'],
+              'pluginId': pluginId,
+              'fieldKey': fieldKey,
+              'query': query,
+            });
+            return studioItems(result['options']);
+          },
           save: (values) =>
               command({'action': 'save', 'revision': revision, ...values}),
         ),

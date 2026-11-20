@@ -1,7 +1,11 @@
-import { AuthExpiredError } from '../../../sdk/index.ts';
-import type { HttpService } from '../../../sdk/index.ts';
-import { loadImage } from '../../../src/images.ts';
-import type { BilibiliDynamicItem, BilibiliFeedResponse, BilibiliNavResponse } from './types.ts';
+import { AuthExpiredError, loadImage } from 'dingdong-engine/sdk';
+import type { HttpService, SelectOption } from 'dingdong-engine/sdk';
+import type {
+  BilibiliDynamicItem,
+  BilibiliFeedResponse,
+  BilibiliFollowingsResponse,
+  BilibiliNavResponse,
+} from './types.ts';
 
 export async function verifyBilibiliSession(cookie: string, http: HttpService) {
   const nav = await http.json<BilibiliNavResponse>('https://api.bilibili.com/x/web-interface/nav', {
@@ -27,6 +31,56 @@ export async function verifyBilibiliSession(cookie: string, http: HttpService) {
     name: nav.data.uname || 'B 站用户',
     ...(avatar ? { avatar } : {}),
   };
+}
+
+export async function fetchBilibiliFollowings(
+  cookie: string,
+  http: HttpService,
+  query: string,
+  signal: AbortSignal,
+): Promise<SelectOption[]> {
+  const nav = await http.json<BilibiliNavResponse>('https://api.bilibili.com/x/web-interface/nav', {
+    headers: { cookie, referer: 'https://www.bilibili.com/' },
+    signal,
+  });
+  const mid = nav.data?.mid;
+  if (nav.code !== 0 || !nav.data?.isLogin || !mid) {
+    throw new Error('请先在「所需账号」完成哔哩哔哩登录后再筛选关注 UP 主');
+  }
+
+  const all: SelectOption[] = [];
+  for (let pn = 1; pn <= 4; pn++) {
+    const res = await http.json<BilibiliFollowingsResponse>(
+      `https://api.bilibili.com/x/relation/followings?vmid=${mid}&pn=${pn}&ps=50&order=desc`,
+      {
+        headers: { cookie, referer: `https://space.bilibili.com/${mid}/fans/follow` },
+        signal,
+      },
+    );
+    if (res.code !== 0) {
+      if (pn === 1) throw new Error(res.message || '无法读取 B 站关注列表');
+      break;
+    }
+    const list = res.data?.list || [];
+    for (const user of list) {
+      if (!user.mid || !user.uname) continue;
+      all.push({
+        value: String(user.mid),
+        label: user.uname,
+        description: (user.sign || '').trim().slice(0, 60) || `UID ${user.mid}`,
+      });
+    }
+    if (list.length < 50) break;
+  }
+
+  const kw = query.trim().toLowerCase();
+  if (!kw) return all;
+  return all.filter(
+    (opt) =>
+      opt.label.toLowerCase().includes(kw) ||
+      opt.value.includes(kw) ||
+      (opt.description || '').toLowerCase().includes(kw),
+  );
 }
 
 export async function fetchBilibiliDynamics(

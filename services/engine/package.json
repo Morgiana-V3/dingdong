@@ -3,11 +3,16 @@
   "version": "0.2.0",
   "private": true,
   "type": "module",
+  "exports": {
+    "./sdk": "./sdk/index.ts"
+  },
   "description": "Cordis-based pluggable content engine for Dingdong self-hosted inbox",
   "scripts": {
+    "postinstall": "node scripts/link-sdk.ts",
     "start": "node src/server.ts",
     "test": "node --test tests/*.test.ts",
     "typecheck": "tsc --noEmit",
+    "plugin:create": "node scripts/create-plugin.ts",
     "plugin:test": "node scripts/test-plugin.ts"
   },
   "engines": {

@@ -1,8 +1,11 @@
 export interface BilibiliFeedConfig {
   feedType: 'all' | 'video';
+  upIds?: string[];
   keywords?: string;
   limit: number;
-  aiProvider?: string;
+  filterModel?: string;
+  filterPrompt?: string;
+  summaryModel?: string;
 }
 
 export interface BilibiliFeedState {
@@ -21,27 +24,57 @@ export interface BilibiliNavResponse {
   };
 }
 
+export interface BilibiliFollowingsResponse {
+  code: number;
+  message?: string;
+  data?: {
+    list?: Array<{
+      mid?: number;
+      uname?: string;
+      sign?: string;
+    }>;
+  };
+}
+
+export interface BilibiliRichTextNode {
+  type?: string;
+  text?: string;
+  orig_text?: string;
+  emoji?: {
+    text?: string;
+    icon_url?: string;
+  };
+}
+
 export interface BilibiliDynamicItem {
   id_str?: string;
   type?: string;
   modules?: {
     module_author?: {
+      mid?: number;
       name?: string;
       pub_ts?: number;
     };
     module_dynamic?: {
-      desc?: { text?: string };
+      desc?: {
+        text?: string;
+        rich_text_nodes?: BilibiliRichTextNode[];
+      };
       major?: {
         archive?: {
           bvid?: string;
           title?: string;
           desc?: string;
           cover?: string;
+          duration_text?: string;
           jump_url?: string;
         };
         opus?: {
           title?: string;
-          summary?: { text?: string };
+          summary?: {
+            text?: string;
+            rich_text_nodes?: BilibiliRichTextNode[];
+          };
           jump_url?: string;
           pics?: Array<{ url?: string }>;
         };
@@ -61,12 +94,22 @@ export interface BilibiliFeedResponse {
   };
 }
 
+export interface RichSegment {
+  type: 'text' | 'emoji';
+  text: string;
+  url?: string;
+}
+
 export interface ParsedDynamic {
   id: string;
+  authorMid: string;
   title: string;
-  body: string;
+  bodyText: string;
+  bodySegments: RichSegment[];
   source: string;
   url: string;
+  isVideo: boolean;
+  duration?: string;
   images: string[];
   publishedAt?: number;
 }

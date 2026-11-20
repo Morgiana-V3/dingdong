@@ -103,5 +103,25 @@ export function renderHtmlTemplate(
     renderFn(structuredClone(data));
   }
 
+  // 3. Inline local relative asset images (e.g. <img src="./assets/icon.svg">) as data URIs
+  const mimeByExt: Record<string, string> = {
+    '.svg': 'image/svg+xml',
+    '.png': 'image/png',
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.webp': 'image/webp',
+    '.gif': 'image/gif',
+  };
+  for (const img of [...document.querySelectorAll('img')]) {
+    const src = (img.getAttribute('src') || '').trim();
+    if (!src || /^https?:\/\//i.test(src) || /^data:/i.test(src)) continue;
+    const assetPath = path.resolve(baseDir, src);
+    const ext = path.extname(assetPath).toLowerCase();
+    const mime = mimeByExt[ext];
+    if (!mime || !assetPath.startsWith(path.resolve(baseDir)) || !fs.existsSync(assetPath)) continue;
+    const raw = fs.readFileSync(assetPath);
+    img.setAttribute('src', `data:${mime};base64,${raw.toString('base64')}`);
+  }
+
   return document.toString();
 }

@@ -9,10 +9,22 @@
 </head>
 <body>
   <main>
+    <header class="issue-header">
+      <img class="brand-icon" src="./assets/bili-tv.svg" alt="B站">
+      <div class="issue-meta">
+        <h1 id="issue-title">B 站关注动态</h1>
+        <span id="issue-sub" class="issue-sub"></span>
+      </div>
+    </header>
+
     <section id="ai-banner" class="ai-banner" hidden>
-      <div class="ai-tag">AI 导读</div>
+      <div class="ai-head">
+        <img class="ai-icon" src="./assets/ai-spark.svg" alt="AI">
+        <span class="ai-tag">AI 导读</span>
+      </div>
       <p id="ai-summary"></p>
     </section>
+
     <div id="feed-list" class="feed-list"></div>
   </main>
 </body>

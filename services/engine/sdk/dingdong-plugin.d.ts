@@ -7,6 +7,7 @@ export type FieldType =
   | 'stringList'
   | 'secret'
   | 'aiProvider'
+  | 'remoteMultiSelect'
   | 'tasks';
 
 export interface SelectOption {
@@ -15,10 +16,19 @@ export interface SelectOption {
   description?: string;
 }
 
+export interface FieldCondition {
+  field: string;
+  equals?: unknown;
+  nonEmpty?: boolean;
+}
+
 export interface PluginField {
   key: string;
   label: string;
   type: FieldType;
+  group?: string;
+  groupDescription?: string;
+  when?: FieldCondition;
   required?: boolean;
   default?: unknown;
   placeholder?: string;
@@ -30,6 +40,7 @@ export interface PluginField {
   maxItems?: number;
   minItems?: number;
   options?: SelectOption[];
+  optionsSource?: string;
 }
 
 export interface WebCookieAuth {
@@ -102,7 +113,18 @@ export interface HttpService {
   json<T = unknown>(url: string, options?: HttpRequestOptions): Promise<T>;
 }
 
+export interface AIProviderConfig {
+  id: string;
+  name: string;
+  baseUrl: string;
+  apiKey: string;
+  model: string;
+  maxOutputTokens: number;
+}
+
 export interface TaskAIService {
+  /** Raw provider credentials & model selection for custom API calls / SDKs. */
+  readonly config: AIProviderConfig;
   generate(
     input:
       | string
@@ -149,6 +171,13 @@ export interface JobContext<TConfig = Record<string, unknown>, TState = Record<s
   log(step: string, detail: string, status?: 'info' | 'warn' | 'error'): void;
 }
 
+export interface OptionsHandlerContext {
+  query: string;
+  credential: CredentialValue | null;
+  http: HttpService;
+  signal: AbortSignal;
+}
+
 export interface SourceDefinition<
   TConfig = Record<string, unknown>,
   TState = Record<string, unknown>,
@@ -161,6 +190,7 @@ export interface SourceDefinition<
   capabilities?: Array<'ai.required' | 'ai.optional'>;
   fields: PluginField[];
   auth?: PluginAuth;
+  optionsHandlers?: Record<string, (ctx: OptionsHandlerContext) => Promise<SelectOption[]>>;
   run?(job: JobContext<TConfig, TState>): Promise<RunResult>;
 }
 

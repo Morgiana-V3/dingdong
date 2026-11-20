@@ -6,52 +6,61 @@
 
 ---
 
-## 1. 最小插件结构
+## 1. 一键生成插件模板
+
+```sh
+cd services/engine
+npm run plugin:create my-watcher "我的监控"
+```
+
+生成的标准插件目录包含完整注释、`types.ts`、`schema.ts`、`index.ts` 及浏览器可直接预览的 `src/template/`。所有 SDK 方法与类型统一从 **`dingdong-engine/sdk`** 导入（零相对路径，编辑器输入 `from 'dingdong-engine/sdk'` 自动列出全部可用导出）：
 
 ```ts
-// plugins/my-plugin/index.ts
-export const name = 'my-plugin';
-export const inject = { required: ['source', 'http'] };
+// plugins/my-watcher/src/index.ts
+import { AuthExpiredError, definePlugin, loadImage, renderHtmlTemplate } from 'dingdong-engine/sdk';
+```
 
-export function apply(ctx) {
-  ctx.source.register({
-    id: 'my-plugin',            // 全局唯一，小写字母/数字/连字符
-    name: '我的订阅源',           // App 与 Web 展示名称
-    description: '一句话说明用途',
-    version: '1.0.0',
-    capabilities: ['ai.optional'], // 可选：'ai.required' | 'ai.optional'
-    fields: [
-      { key: 'url', label: '数据源地址', type: 'text', required: true },
-      { key: 'limit', label: '最多条数', type: 'number', default: 5, min: 1, max: 20 },
-    ],
-    async run(job) {
-      const { config, state, http, ai, credential, signal, log } = job;
-      log('fetch', `拉取 ${config.url}`);
-      const data = await http.json(config.url, { signal });
-      const seen = new Set(state.seenIds || []);
-      const fresh = data.items.filter((i) => !seen.has(i.id)).slice(0, config.limit);
-      if (!fresh.length) {
-        return { message: null, state: { seenIds: [...seen].slice(-500) }, detail: '暂无更新' };
-      }
-      return {
-        message: {
-          title: `${job.taskName}（${fresh.length} 条）`,
-          short: fresh.slice(0, 2).map((i) => i.title).join('；'),
-          articles: fresh.map((i) => ({
-            title: i.title,
-            body: i.summary,
-            source: '我的来源',
-            url: i.url,
-            images: i.cover ? [i.cover] : [],
-            publishedAt: i.publishedAt,
-          })),
-        },
-        state: { seenIds: [...seen, ...fresh.map((i) => i.id)].slice(-500) },
-        detail: `推送 ${fresh.length} 条更新`,
-      };
-    },
-  });
-}
+### 最小插件代码
+
+```ts
+// plugins/my-plugin/src/index.ts
+import { definePlugin } from 'dingdong-engine/sdk';
+
+export default definePlugin({
+  name: 'my-plugin',
+  inject: { required: ['source', 'http'] },
+  apply(ctx) {
+    ctx.source.register({
+      id: 'my-plugin',
+      name: '我的订阅源',
+      description: '一句话说明用途',
+      version: '1.0.0',
+      fields: [
+        { key: 'url', label: '数据源地址', type: 'text', required: true },
+        { key: 'limit', label: '最多条数', type: 'number', default: 5, min: 1, max: 20 },
+      ],
+      async run(job) {
+        const { config, state, http, signal, log } = job;
+        log('fetch', `拉取 ${config.url}`);
+        const data = await http.json<{ items: Array<{ id: string; title: string; summary: string; url: string }> }>(String(config.url), { signal });
+        const seen = new Set<string>(Array.isArray(state.seenIds) ? state.seenIds : []);
+        const fresh = data.items.filter((i) => !seen.has(i.id)).slice(0, Number(config.limit || 5));
+        if (!fresh.length) {
+          return { message: null, state: { seenIds: [...seen].slice(-500) }, detail: '暂无更新' };
+        }
+        return {
+          message: {
+            title: `${job.taskName}（${fresh.length} 条）`,
+            short: fresh.slice(0, 2).map((i) => i.title).join('；'),
+            articles: fresh.map((i) => ({ title: i.title, body: i.summary, url: i.url })),
+          },
+          state: { seenIds: [...seen, ...fresh.map((i) => i.id)].slice(-500) },
+          detail: `推送 ${fresh.length} 条更新`,
+        };
+      },
+    });
+  },
+});
 ```
 
 ---

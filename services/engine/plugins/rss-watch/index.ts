@@ -1,4 +1,4 @@
-import { definePlugin } from '../../sdk/index.ts';
+import { definePlugin } from 'dingdong-engine/sdk';
 
 interface RssConfig {
   feeds: string[];

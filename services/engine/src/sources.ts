@@ -59,7 +59,7 @@ export class SourceRegistry {
   }
 
   publicPlugins() {
-    return [...this.plugins.values()].map(({ run, auth, ...descriptor }) => ({
+    return [...this.plugins.values()].map(({ run, auth, optionsHandlers, ...descriptor }) => ({
       ...descriptor,
       authId: auth?.id || null,
       authName: auth?.name || null,
@@ -253,6 +253,28 @@ export class TaskEngine {
         return await this.ai.testProvider(input.provider || {});
       } catch (error) {
         throw new EngineError(this.redact(error.message));
+      }
+    }
+    if (input.action === 'fieldOptions') {
+      const plugin = this.registry.plugins.get(input.pluginId);
+      if (!plugin) throw new EngineError('插件不存在', 404);
+      const field = (plugin.fields || []).find((f: any) => f.key === input.fieldKey);
+      const handlerName = field?.optionsSource;
+      const handler = handlerName ? plugin.optionsHandlers?.[handlerName] : null;
+      if (typeof handler !== 'function') {
+        throw new EngineError('该字段不支持远程列表筛选');
+      }
+      const credential = plugin.auth ? this.credentials.get(plugin.auth.id) : null;
+      try {
+        const options = await handler({
+          query: String(input.query || '').trim(),
+          credential,
+          http: this.http,
+          signal: AbortSignal.timeout(20000),
+        });
+        return { options: Array.isArray(options) ? options.slice(0, 500) : [] };
+      } catch (error) {
+        throw new EngineError(this.redact(error?.message || '读取选项列表失败'));
       }
     }
     if (this.running.size && input.action !== 'cancel') {
