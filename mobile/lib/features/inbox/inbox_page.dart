@@ -10,7 +10,7 @@ import '../../ui/content_route.dart';
 import '../../ui/theme.dart';
 import '../reader/reader_page.dart';
 import '../settings/settings_page.dart';
-import '../studio/subscription_management_page.dart';
+import '../subscriptions/subscription_management_page.dart';
 import 'message_tile.dart';
 
 class InboxPage extends StatefulWidget {

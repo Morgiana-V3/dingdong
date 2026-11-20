@@ -29,13 +29,13 @@
 
 基于 `@cordisjs/core`（Koishi 同源插件内核）构建，无浏览器（Playwright）依赖，镜像轻量：
 
-- **动态插件加载**：启动时扫描 `PLUGINS_DIR`（默认 `./plugins`，Docker 挂载 `/app/plugins`）加载 `*/index.ts`（兼容 `.mts / .mjs / .js`），单个插件出错自动隔离。
+- **动态插件加载**：启动时扫描 `PLUGINS_DIR`（默认 `./plugins`，Docker 挂载 `/app/plugins`）自动识别 `*/src/index.ts` 与 `*/index.ts`（兼容 `.mts / .mjs / .js`），单个插件出错自动隔离。
 - **宿主能力注入（`ctx` / `job`）**：
-  - `ctx.source.register(def)`：注册内容源、通用表单原语（`text / textarea / number / boolean / select / stringList / secret / tasks`）及可选 `auth` 声明。
+  - `ctx.source.register(def)`：注册内容源、通用表单原语（`text / textarea / number / boolean / select / stringList / secret / aiProvider / remoteMultiSelect / tasks`）、分组卡片（`group` / `groupDescription`）、条件显隐（`when`）、远程动态选项处理器（`optionsHandlers`）及可选 `auth` 声明。
   - `ctx.http`：统一超时、代理与取消信号。
-  - `job.ai`：复用 AES-256-GCM 加密保存的 AI 服务商配置（支持 `generate` 与结构化 `json`）。
-  - `job.state` + Outbox 原子投递：投递前原子落盘待发消息，确认 Relay 接收后再提交新 `state`；失败或重启复用原消息 ID 与正文重试。
-  - 渲染与预览：自动将 `articles` / `markdown` / `html` / `text` 转为自包含 HTML、压缩内嵌图片、校验 ≤ 1 MB、生成卡片头图元数据与可选外文双语切换。
+  - `job.ai` & `aiProvider`：复用 AES-256-GCM 加密保存的 AI 服务商配置，插件可按需声明一个或多个模型字段，既可直接调用 `generate / json`，也可读取 `ai.config` 自行发起定制请求。
+  - `job.state` + Outbox 原子投递：投递前原子落盘待发消息，确认 Relay 接收后再提交新 `state`；失败或重启复用原消息 ID 与正文重试；去重逻辑由各插件通过 `job.state` 自主掌控。
+  - 渲染与预览：提供 `renderHtmlTemplate()`（`linkedom + node:vm` 编译 `template.html + style.css + render.js + ./assets/*` 为无脚本静态 HTML）以及默认模板自动渲染、图片压缩内嵌与 ≤ 1 MB 体积校验。
 
 ## 4. 通用声明式凭据与 Web 登录桥
 

@@ -1,7 +1,7 @@
 import 'dart:io';
 import 'dart:ui' as ui;
 import 'package:dingdong/data/inbox_repository.dart';
-import 'package:dingdong/features/studio/subscription_management_page.dart';
+import 'package:dingdong/features/subscriptions/subscription_management_page.dart';
 import 'package:dingdong/ui/theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';

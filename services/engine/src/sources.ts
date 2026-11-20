@@ -351,7 +351,6 @@ export class TaskEngine {
         schedule,
         providerId: String(input.providerId || ''),
         aiPreview,
-        onlyChanged: input.onlyChanged === true,
         enabled: input.enabled,
         config,
         nextRunAt: nextRun(schedule, this.now()),
@@ -505,12 +504,11 @@ export class TaskEngine {
         throw error;
       }
       const digest = output.message ? messageDigest(output.message) : source.lastDigest;
-      const changed = !source.onlyChanged || digest !== source.lastDigest;
       return {
         source,
         output,
         digest,
-        message: changed ? output.message : null,
+        message: output.message,
       };
     };
 

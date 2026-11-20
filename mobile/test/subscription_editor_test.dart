@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:dingdong/features/studio/subscription_editor.dart';
+import 'package:dingdong/features/subscriptions/subscription_editor.dart';
 import 'package:dingdong/ui/theme.dart';
-import 'package:dingdong/features/studio/source_selection.dart';
+import 'package:dingdong/features/subscriptions/source_selection.dart';
 import 'package:dingdong/ui/selection_sheet.dart';
 
 void main() {

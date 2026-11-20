@@ -4,18 +4,47 @@ import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const nodeModules = path.join(root, 'node_modules');
-const linkPath = path.join(nodeModules, 'dingdong-engine');
+const pkgDir = path.join(nodeModules, 'dingdong-engine');
 
 fs.mkdirSync(nodeModules, { recursive: true });
 try {
-  const stat = fs.lstatSync(linkPath);
+  const stat = fs.lstatSync(pkgDir);
   if (stat.isSymbolicLink()) {
-    fs.unlinkSync(linkPath);
+    fs.unlinkSync(pkgDir);
   }
 } catch {
   // Does not exist yet
 }
 
-if (!fs.existsSync(linkPath)) {
-  fs.symlinkSync(root, linkPath, process.platform === 'win32' ? 'junction' : 'dir');
+fs.mkdirSync(pkgDir, { recursive: true });
+try {
+  fs.rmSync(path.join(pkgDir, 'sdk.ts'), { force: true });
+} catch {
+  // Ignore
 }
+fs.writeFileSync(
+  path.join(pkgDir, 'package.json'),
+  JSON.stringify(
+    {
+      name: 'dingdong-engine',
+      private: true,
+      type: 'module',
+      exports: {
+        './sdk': {
+          types: './sdk.d.ts',
+          default: './sdk.js',
+        },
+      },
+    },
+    null,
+    2,
+  ) + '\n',
+);
+fs.writeFileSync(
+  path.join(pkgDir, 'sdk.js'),
+  "export * from '../../sdk/index.ts';\n",
+);
+fs.writeFileSync(
+  path.join(pkgDir, 'sdk.d.ts'),
+  "export * from '../../sdk/index.ts';\n",
+);

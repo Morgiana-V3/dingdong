@@ -18,7 +18,7 @@
 - **图片预览**：全屏查看、双指缩放、左右切换与保存原图。
 - **后台接收**：Android 常驻前台服务与 WebSocket 长连接，断线重连、离线补收、落盘确认后清除服务器正文、幂等去重。
 - **通用 App 配置**：App 内填写服务器地址与接收密钥，更换服务器无需重新编译；支持服务器直连与连接诊断。
-- **AI 友好的插件生态**：参考 Koishi 的 Cordis 插件机制，提供 [插件开发指南](docs/PLUGIN_GUIDE.md)、TypeScript SDK 类型定义与 `npm run plugin:test` 一键校验工具，可直接让 AI 编程助手帮你编写自定义推送插件。
+- **AI 友好的插件生态**：参考 Koishi 的 Cordis 插件机制，提供 [插件开发指南](docs/PLUGIN_GUIDE.md)、`dingdong-engine/sdk` 统一 TypeScript SDK、`npm run plugin:create` 一键脚手架与 `npm run plugin:test` 校验工具，可直接让 AI 编程助手帮你编写自定义推送插件。
 - **通用声明式凭据（`web-cookie` / `token`）**：需要网站登录态的自定义插件只需声明 `auth` 元数据，手机 App 即可在独立隔离 WebView 中完成登录并通过一次性配对码安全回传给服务端，零平台硬编码。
 
 ## 工作方式
@@ -123,9 +123,9 @@ docker compose up -d --build
 参考 [nginx.conf.template](services/engine/deploy/nginx.conf.template) 将 HTTPS 的 `/v1/engine/` 转发到 `127.0.0.1:18890`，App 即可自动识别并开启「订阅管理」。
 
 编写自定义插件请阅读 [插件开发指南](docs/PLUGIN_GUIDE.md)，或直接参考内置于 `services/engine/plugins/` 的官方参考插件：
-- [services/engine/plugins/bilibili-feed](services/engine/plugins/bilibili-feed/index.ts)（完整示范：手机网页登录回传 Cookie + 动态表单 + 增量去重 + 可选 AI 导读）
-- [services/engine/plugins/rss-watch](services/engine/plugins/rss-watch/index.ts)（纯 HTTP + 游标去重）
-- [services/engine/plugins/ai-web-digest](services/engine/plugins/ai-web-digest/index.ts)（网页抓取 + AI 筛选摘要）
+- [services/engine/plugins/bilibili-feed](services/engine/plugins/bilibili-feed/README.md)（完整多文件示范：手机网页登录回传 Cookie + 远程关注 UP 主搜索多选 + 双 AI 模型过滤与总结 + 分组表单 + HTML/SVG 模板）
+- [services/engine/plugins/rss-watch](services/engine/plugins/rss-watch/index.ts)（单文件极简示范：纯 HTTP + 游标去重）
+- [services/engine/plugins/ai-web-digest](services/engine/plugins/ai-web-digest/index.ts)（单文件极简示范：网页抓取 + AI 筛选摘要）
 
 ## 核心 API
 
@@ -148,10 +148,8 @@ docker compose up -d --build
 mobile/                 Flutter 页面与 Kotlin Android 原生实现
 services/
   relay/                FastAPI 极简消息中转（可单独部署）
-  engine/               Node + Cordis 可选插件引擎、SDK、Web 管理台与测试 CLI
-examples/
-  plugins/              官方示例插件（rss-watch、ai-web-digest）
-  templates/            HTML 模板输入示例
+  engine/               Node + Cordis 可选插件引擎、SDK、内置插件、Web 管理台与 CLI
+examples/               HTML 示例文档与模板输入 JSON
 tools/                  零依赖 Python 发送工具与模板渲染器
 docs/                   插件开发指南、部署、发送、架构与开发文档
 ```

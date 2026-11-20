@@ -118,7 +118,6 @@ class _ServerConfigurationPageState extends State<ServerConfigurationPage> {
         'schedule': task['schedule'],
         'minutes': task['minutes'],
         'enabled': task['enabled'],
-        'onlyChanged': task['onlyChanged'] != false,
         'providerId': selected,
       });
     } on PlatformException catch (failure) {

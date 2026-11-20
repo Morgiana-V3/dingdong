@@ -52,7 +52,6 @@ class _SubscriptionEditorState extends State<SubscriptionEditor> {
   late String scheduleType =
       (widget.task?['schedule'] as Map?)?['type'] as String? ?? 'manual';
   late bool enabled = widget.task?['enabled'] as bool? ?? !widget.asSource;
-  late bool onlyChanged = widget.task?['onlyChanged'] != false;
   late List<String> times =
       ((widget.task?['schedule'] as Map?)?['times'] as List? ??
               [(widget.task?['schedule'] as Map?)?['time'] ?? '09:00'])
@@ -159,7 +158,6 @@ class _SubscriptionEditorState extends State<SubscriptionEditor> {
         'channelId': channelId,
         'providerId': providerId,
         'enabled': enabled,
-        'onlyChanged': onlyChanged,
         'config': values,
         'schedule': {
           'type': scheduleType,

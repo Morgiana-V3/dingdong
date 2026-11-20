@@ -51,6 +51,7 @@ cd services/engine
 npm install
 npm run typecheck
 npm test
+npm run plugin:create my-plugin "示例插件"
 npm run plugin:test ./plugins/bilibili-feed
 npm run plugin:test ./plugins/rss-watch
 npm run plugin:test ./plugins/ai-web-digest
@@ -113,6 +114,6 @@ flutter test integration_test/delivery_test.dart -d DEVICE_ID
 
 ## 0.2.0 验证范围
 
-完成去 Studio 化与插件化重构后，通过 Flutter 静态分析、46 项 Flutter 测试、Android 原生单元测试、5 项 Python 发送工具测试、4 项 Relay 测试、4 项 Engine 测试以及 2 个官方示例插件的 `plugin:test` 校验。
+完成去 Studio 化与插件化重构后，通过 Flutter 静态分析、46 项 Flutter 测试、Android 原生单元测试、5 项 Python 发送工具测试、4 项 Relay 测试、5 项 Engine 测试以及 3 个内置官方插件（`bilibili-feed`、`rss-watch`、`ai-web-digest`）的 `plugin:test` 校验。
 
 真机实测与公网 Docker Compose + Nginx 联调需在真实设备和服务器环境单独核对，不将单元测试等同于真实网络/长期后台稳定性证明。

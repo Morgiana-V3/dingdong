@@ -41,13 +41,13 @@ App 设置填 `服务器IP:8080`（自动按 HTTP 处理）或 `https://你的�
 旧服务器：
 
 ```sh
-docker save dingdong-server:0.1.0 | gzip > dingdong-server-0.1.0.tar.gz
+docker save dingdong-server:0.2.0 | gzip > dingdong-server-0.2.0.tar.gz
 ```
 
 新服务器导入镜像、放置 compose.yaml 和 `.env`：
 
 ```sh
-gzip -dc dingdong-server-0.1.0.tar.gz | docker load
+gzip -dc dingdong-server-0.2.0.tar.gz | docker load
 docker compose up -d --no-build
 ```
 

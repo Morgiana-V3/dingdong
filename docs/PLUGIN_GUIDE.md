@@ -72,7 +72,7 @@ export default definePlugin({
 | `job.config` | 经宿主校验后的用户配置对象（含 `secret` 字段解密后的明文） |
 | `job.state` | 上次**投递成功**后持久化的状态对象（去重 ID、游标等）；返回新 `state` 会在消息送达中转后原子提交 |
 | `job.http` | `fetch(url, opts)`、`text(url, opts)`、`json(url, opts)`，自动支持代理与超时 |
-| `job.ai` | 若任务关联了 AI 配置，提供 `generate(opts, signal)` 和 `json(opts, signal)`；未配置时为 `null` |
+| `job.ai` | 若任务关联了 AI 配置，提供 `generate(opts, signal)`、`json(opts, signal)` 与原始 `config`（含 `apiUrl / apiKey / model / protocol` 供插件自行发起定制请求）；也可在 `fields` 中声明多个 `aiProvider` 字段按需取用 |
 | `job.credential` | 若插件声明了 `auth`，此处自动注入已解密的凭据（`{ cookie, cookies }` 或 `{ token }`） |
 | `job.signal` | `AbortSignal`，任务被用户停止或超时时触发，请透传给 `http` 与 `ai` |
 | `job.log(step, detail)` | 记录执行轨迹，手机 App 和 Web 管理台可查看 |
@@ -90,6 +90,10 @@ export default definePlugin({
 | `select` | 下拉单选 | `required`, `options: [{ value, label, description? }]`, `default` |
 | `stringList` | 多行列表（在 `config` 中自动解析为 `string[]`） | `required`, `maxItems`, `placeholder` |
 | `secret` | 加密密钥（App 不回显明文，留空保持原值） | `required`, `maxLength` |
+| `aiProvider` | 从服务端已配置的 AI 服务中选择模型（可声明多个，如过滤模型 + 摘要模型） | `required`, `help` |
+| `remoteMultiSelect` | 带顶部搜索框的远程多选面板（配合 `optionsHandlers[key]` 动态拉取选项） | `required`, `maxItems`, `help` |
+
+> **分组与条件显隐**：任意字段都可附加 `group` / `groupDescription`（同组字段在 App 中自动聚合为同一卡片）以及 `when: { field, notEmpty?: true, equals?: ... }`（根据另一字段值动态展开/收起）。
 
 ---
 
@@ -115,7 +119,7 @@ auth: {
 ```
 手机 App 会自动在「订阅管理 → 所需账号」中展示该站点，使用独立隔离 WebView 打开 `loginUrl`，检测到 `requiredCookies` 后经一次性配对码通过 HTTPS 上传到服务端，由你的 `verify` 函数验真并 AES-256-GCM 加密保存。
 
-若运行时发现登录态过期，可抛出 `AuthExpiredError`（来自 `services/engine/src/credentials.ts`），宿主会自动将凭据标记为 `expired` 并向手机推送提醒消息。
+若运行时发现登录态过期，可抛出 `AuthExpiredError`（统一从 `'dingdong-engine/sdk'` 导入），宿主会自动将凭据标记为 `expired` 并向手机推送提醒消息。
 
 ### 4.2 Token / API Key（`token`）
 ```js
@@ -138,7 +142,7 @@ auth: {
 ## 5. 输出格式与可视化 HTML 模板（推荐）
 
 插件支持三种输出方式：
-- **自定义 HTML 模板目录（最推荐，可边写边在浏览器预览）**：使用 SDK 提供的 `renderHtmlTemplate(new URL('./template', import.meta.url), data)`。在插件内放 `template.html` + `style.css` + `render.js`（带 `testData`），直接用浏览器 / Live Server 打开 `template.html` 实时调样式；服务端推送时自动通过 `linkedom` + `vm` 执行 `render(data)`、内联 CSS 并剥离 `<script>`，输出纯静态安全 HTML（参考 [bilibili-feed/src/template](../services/engine/plugins/bilibili-feed/src/template/template.html)）。
+- **自定义 HTML 模板目录（最推荐，可边写边在浏览器预览）**：使用 SDK 提供的 `renderHtmlTemplate(new URL('./template', import.meta.url), data)`。在插件内放 `template.html` + `style.css` + `render.js`（带 `testData`），还可在 `template/assets/` 下放置本地 `.svg / .png / .webp` 素材并直接用 `./assets/xxx.svg` 引用；用浏览器打开 `template.html` 即可实时调样式，服务端推送时自动通过 `linkedom` + `vm` 执行 `render(data)`、内联 CSS 与本地素材并剥离 `<script>`，输出纯静态安全 HTML（参考 [bilibili-feed/src/template](../services/engine/plugins/bilibili-feed/src/template/template.html)）。
 - **结构化 `articles`**：适合快速开发，由宿主默认模板排版并支持统一推送汇总。
 - **原始正文**：直接返回 `{ title, short, format: 'html' | 'markdown' | 'text', content }`。
 
@@ -153,14 +157,14 @@ auth: {
 
 ```sh
 cd services/engine
-npm run plugin:test ../../examples/plugins/rss-watch
-# 传入配置文件试跑并检查渲染后体积：
-npm run plugin:test ./plugins/my-plugin -- --config ./test-config.json
+npm run plugin:test ./plugins/rss-watch
+# 传入配置文件试跑并导出渲染后的本地 HTML 预览：
+npm run plugin:test ./plugins/my-plugin -- --config ./test-config.json --out ./preview.html
 # 加 --send 可直接发送预览消息到手机（需设置 DINGDONG_URL 与 DINGDONG_SEND_TOKEN）：
 npm run plugin:test ./plugins/my-plugin -- --config ./test-config.json --send
 ```
 
 参考内置完整示例（位于 `services/engine/plugins/`，自带完整 TS 环境）：
-- [bilibili-feed](../services/engine/plugins/bilibili-feed/index.ts)（完整示范：手机网页登录 `web-cookie` + `select/text/number/boolean` 表单 + 增量去重 + 可选 AI 导读）
-- [rss-watch](../services/engine/plugins/rss-watch/index.ts)（纯 HTTP + 游标去重）
-- [ai-web-digest](../services/engine/plugins/ai-web-digest/index.ts)（网页抓取 + AI 筛选摘要）
+- [bilibili-feed](../services/engine/plugins/bilibili-feed/README.md)（完整多文件示范：`web-cookie` 登录 + 远程关注 UP 主搜索多选 + 双 AI 模型过滤与总结 + 分组表单 + HTML/SVG 模板）
+- [rss-watch](../services/engine/plugins/rss-watch/index.ts)（单文件极简示范：纯 HTTP + 游标去重）
+- [ai-web-digest](../services/engine/plugins/ai-web-digest/index.ts)（单文件极简示范：网页抓取 + AI 筛选摘要）

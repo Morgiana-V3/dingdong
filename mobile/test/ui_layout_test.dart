@@ -7,7 +7,7 @@ import 'package:dingdong/data/inbox_repository.dart';
 import 'package:dingdong/features/accounts/platform_accounts_page.dart';
 import 'package:dingdong/features/inbox/inbox_page.dart';
 import 'package:dingdong/features/settings/settings_page.dart';
-import 'package:dingdong/features/studio/subscription_editor.dart';
+import 'package:dingdong/features/subscriptions/subscription_editor.dart';
 import 'package:dingdong/ui/theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';

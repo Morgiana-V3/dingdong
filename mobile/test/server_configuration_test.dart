@@ -1,4 +1,4 @@
-import 'package:dingdong/features/studio/subscription_providers.dart';
+import 'package:dingdong/features/subscriptions/subscription_providers.dart';
 import 'package:dingdong/ui/theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';

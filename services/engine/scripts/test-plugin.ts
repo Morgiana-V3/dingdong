@@ -2,7 +2,7 @@
 /**
  * Validate and dry-run a Dingdong Cordis plugin locally.
  * Usage:
- *   node scripts/test-plugin.mjs <plugin-dir-or-file> [--config config.json] [--send]
+ *   node scripts/test-plugin.ts <plugin-dir-or-file> [--config config.json] [--out preview.html] [--send]
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -17,7 +17,7 @@ import { renderDocument } from '../src/render.ts';
 const args = process.argv.slice(2);
 const target = args[0];
 if (!target) {
-  console.error('用法: npm run plugin:test <插件目录或index.mjs> [--config config.json] [--send]');
+  console.error('用法: npm run plugin:test <插件目录或index.ts> [--config config.json] [--out preview.html] [--send]');
   process.exit(1);
 }
 

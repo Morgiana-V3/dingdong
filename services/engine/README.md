@@ -13,8 +13,8 @@ docker compose up -d --build
 curl http://127.0.0.1:18890/health
 ```
 
-- 自定义插件放在 `services/engine/plugins/<插件名>/index.ts`（同时支持 `.mts / .mjs / .js`，Node 22 原生免编译加载；容器内挂载为 `/app/plugins`），重启容器即可自动加载。
-- 通过 Nginx 将 HTTPS 的 `/v1/engine/` 转发到 `127.0.0.1:18890`（参考 [deploy/nginx.conf.template](deploy/nginx.conf.template)），手机 App 会自动探测 `/v1/engine/health` 并展示「订阅管理」。
+- 自定义插件放在 `services/engine/plugins/<插件名>/src/index.ts` 或 `index.ts`（同时支持 `.mts / .mjs / .js`，Node 22 原生免编译加载；容器内挂载为 `/app/plugins`），重启容器即可自动加载。
+- 通过 Nginx 将 HTTPS 的 `/v1/engine/` 转发到 `127.0.0.1:18890`（参考 [deploy/nginx.conf.template](deploy/nginx.conf.template)），手机 App 即可在「订阅管理」中自动连接并管理任务与账号。
 
 ## 访问本地 Web 管理台
 
@@ -38,6 +38,7 @@ ssh -N -L 18890:127.0.0.1:18890 用户名@服务器
 npm install
 npm run typecheck
 npm test
+npm run plugin:create my-plugin "我的插件"
 npm run plugin:test ./plugins/bilibili-feed
 npm run plugin:test ./plugins/rss-watch
 npm run plugin:test ./plugins/ai-web-digest
