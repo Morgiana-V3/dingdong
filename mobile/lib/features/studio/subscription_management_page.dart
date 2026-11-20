@@ -12,14 +12,21 @@ import '../../ui/connection_badge.dart';
 import '../../ui/theme.dart';
 
 class SubscriptionManagementPage extends StatefulWidget {
-  const SubscriptionManagementPage({super.key, required this.repository});
+  const SubscriptionManagementPage({
+    super.key,
+    required this.repository,
+    this.embedded = false,
+    this.onActionStateChanged,
+  });
   final InboxRepository repository;
+  final bool embedded;
+  final void Function(bool canConfigure, bool canRefresh)? onActionStateChanged;
   @override
   State<SubscriptionManagementPage> createState() =>
-      _SubscriptionManagementPageState();
+      SubscriptionManagementPageState();
 }
 
-class _SubscriptionManagementPageState extends State<SubscriptionManagementPage>
+class SubscriptionManagementPageState extends State<SubscriptionManagementPage>
     with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   late final tabs = TabController(length: 2, vsync: this);
   Map<String, dynamic>? snapshot;
@@ -31,11 +38,17 @@ class _SubscriptionManagementPageState extends State<SubscriptionManagementPage>
   int generation = 0;
   Timer? timer;
 
+  void _notifyActions() {
+    widget.onActionStateChanged?.call(!busy && snapshot != null, !busy);
+  }
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    refresh();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) refresh();
+    });
     timer = Timer.periodic(const Duration(seconds: 5), (_) {
       if (active && !busy) refresh(quiet: true);
     });
@@ -61,7 +74,10 @@ class _SubscriptionManagementPageState extends State<SubscriptionManagementPage>
     if (polling || busy) return;
     polling = true;
     final started = generation;
-    if (!quiet) setState(() => busy = true);
+    if (!quiet) {
+      setState(() => busy = true);
+      _notifyActions();
+    }
     try {
       try {
         final saved = await widget.repository.settings();
@@ -79,12 +95,16 @@ class _SubscriptionManagementPageState extends State<SubscriptionManagementPage>
           snapshot = data;
           error = null;
         });
+        _notifyActions();
       }
     } catch (e) {
       if (mounted && started == generation) setState(() => error = failure(e));
     } finally {
       polling = false;
-      if (mounted && !quiet) setState(() => busy = false);
+      if (mounted && !quiet) {
+        setState(() => busy = false);
+        _notifyActions();
+      }
     }
   }
 
@@ -93,6 +113,7 @@ class _SubscriptionManagementPageState extends State<SubscriptionManagementPage>
       throw PlatformException(code: 'busy', message: '请等待当前操作完成');
     }
     setState(() => busy = true);
+    _notifyActions();
     generation++;
     try {
       final result = await widget.repository.subscriptions({
@@ -106,7 +127,10 @@ class _SubscriptionManagementPageState extends State<SubscriptionManagementPage>
         });
       }
     } finally {
-      if (mounted) setState(() => busy = false);
+      if (mounted) {
+        setState(() => busy = false);
+        _notifyActions();
+      }
     }
   }
 
@@ -456,10 +480,10 @@ class _SubscriptionManagementPageState extends State<SubscriptionManagementPage>
     }
     return Padding(
       key: ValueKey('task-card/${task['id']}'),
-      padding: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.only(bottom: 10),
       child: Card(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(12, 6, 4, 4),
+          padding: const EdgeInsets.fromLTRB(14, 10, 8, 8),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -580,6 +604,134 @@ class _SubscriptionManagementPageState extends State<SubscriptionManagementPage>
     final host =
         Uri.tryParse(connection['endpoint'] as String? ?? '')?.host ?? '';
     final colors = Theme.of(context).colorScheme;
+    final tabBar = TabBar(
+      controller: tabs,
+      dividerColor: colors.outlineVariant.withValues(alpha: .4),
+      tabs: [
+        const Tab(text: '订阅任务'),
+        Tab(text: accounts.isEmpty ? '所需账号' : '所需账号 · ${accounts.length}'),
+      ],
+    );
+    final progressSlot = SizedBox(
+      height: 2,
+      child: busy ? const LinearProgressIndicator(minHeight: 2) : null,
+    );
+    final body = Column(
+      children: [
+        if (widget.embedded) tabBar,
+        progressSlot,
+        Expanded(
+          child: TabBarView(
+            controller: tabs,
+            children: [
+              RefreshIndicator(
+                onRefresh: refresh,
+                child: ListView(
+                  key: const ValueKey('subscription-task-list'),
+                  padding: pageInsets(context, top: 8),
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  children: [
+                    ListTile(
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+                      leading: const Icon(Icons.dns_outlined, size: 20),
+                      minLeadingWidth: 20,
+                      horizontalTitleGap: 8,
+                      title: Text(
+                        host.isEmpty ? '配置服务器连接' : host,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      trailing: ConnectionBadge(
+                        status: connection['status'] as String? ?? '未连接',
+                      ),
+                      onTap: configureConnection,
+                    ),
+                    const Divider(height: 1),
+                    const SizedBox(height: 8),
+                    if (error != null)
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          InlineNotice(error!),
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: TextButton.icon(
+                              onPressed: busy ? null : refresh,
+                              icon: const Icon(Icons.refresh),
+                              label: const Text('重试'),
+                            ),
+                          ),
+                        ],
+                      ),
+                    const SizedBox(height: 2),
+                    Row(
+                      children: [
+                        const Expanded(
+                          child: Text(
+                            '我的任务',
+                            style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                        FilledButton.icon(
+                          onPressed:
+                              busy ||
+                                  error != null ||
+                                  plugins
+                                      .where((p) => p['legacy'] != true)
+                                      .isEmpty
+                              ? null
+                              : () => pickPluginAndCreate(plugins),
+                          icon: const Icon(Icons.add),
+                          label: const Text('添加任务'),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    if (tasks.isEmpty && snapshot != null)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 28),
+                        child: Column(
+                          children: [
+                            Icon(
+                              Icons.subscriptions_outlined,
+                              size: 36,
+                              color: colors.outline,
+                            ),
+                            const SizedBox(height: 12),
+                            const Text('还没有订阅任务'),
+                            const SizedBox(height: 8),
+                            Text(
+                              '添加任务，选择你想接收的内容。',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(color: colors.onSurfaceVariant),
+                            ),
+                          ],
+                        ),
+                      ),
+                    for (final task in tasks) taskCard(task, plugins),
+                  ],
+                ),
+              ),
+              PlatformAccountsPage(
+                embedded: true,
+                requiredAccounts: accounts,
+                serverError: error,
+                onChanged: () => refresh(quiet: true),
+                onAddTask: () => tabs.animateTo(0),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+
+    if (widget.embedded) {
+      return SubscriptionStyle(compact: true, child: body);
+    }
+
     return SubscriptionStyle(
       compact: true,
       child: Scaffold(
@@ -597,120 +749,9 @@ class _SubscriptionManagementPageState extends State<SubscriptionManagementPage>
               icon: const Icon(Icons.refresh),
             ),
           ],
-          bottom: TabBar(
-            controller: tabs,
-            tabs: [
-              const Tab(text: '订阅任务'),
-              Tab(
-                text: accounts.isEmpty ? '所需账号' : '所需账号 · ${accounts.length}',
-              ),
-            ],
-          ),
+          bottom: tabBar,
         ),
-        body: TabBarView(
-          controller: tabs,
-          children: [
-            RefreshIndicator(
-              onRefresh: refresh,
-              child: ListView(
-                key: const ValueKey('subscription-task-list'),
-                padding: pageInsets(context, top: 4),
-                physics: const AlwaysScrollableScrollPhysics(),
-                children: [
-                  if (busy) const LinearProgressIndicator(),
-                  ListTile(
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 4),
-                    leading: const Icon(Icons.dns_outlined, size: 20),
-                    minLeadingWidth: 20,
-                    horizontalTitleGap: 8,
-                    title: Text(
-                      host.isEmpty ? '配置服务器连接' : host,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    trailing: ConnectionBadge(
-                      status: connection['status'] as String? ?? '未连接',
-                    ),
-                    onTap: configureConnection,
-                  ),
-                  const Divider(height: 1),
-                  const SizedBox(height: 6),
-                  if (error != null)
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        InlineNotice(error!),
-                        Align(
-                          alignment: Alignment.centerRight,
-                          child: TextButton.icon(
-                            onPressed: busy ? null : refresh,
-                            icon: const Icon(Icons.refresh),
-                            label: const Text('重试'),
-                          ),
-                        ),
-                      ],
-                    ),
-                  const SizedBox(height: 2),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          '我的任务',
-                          style: const TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                      FilledButton.icon(
-                        onPressed:
-                            busy ||
-                                error != null ||
-                                plugins
-                                    .where((p) => p['legacy'] != true)
-                                    .isEmpty
-                            ? null
-                            : () => pickPluginAndCreate(plugins),
-                        icon: const Icon(Icons.add),
-                        label: const Text('添加任务'),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  if (tasks.isEmpty && snapshot != null)
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 24),
-                      child: Column(
-                        children: [
-                          Icon(
-                            Icons.subscriptions_outlined,
-                            size: 36,
-                            color: colors.outline,
-                          ),
-                          const SizedBox(height: 12),
-                          const Text('还没有订阅任务'),
-                          const SizedBox(height: 8),
-                          Text(
-                            '添加任务，选择你想接收的内容。',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(color: colors.onSurfaceVariant),
-                          ),
-                        ],
-                      ),
-                    ),
-                  for (final task in tasks) taskCard(task, plugins),
-                ],
-              ),
-            ),
-            PlatformAccountsPage(
-              embedded: true,
-              requiredAccounts: accounts,
-              serverError: error,
-              onChanged: () => refresh(quiet: true),
-              onAddTask: () => tabs.animateTo(0),
-            ),
-          ],
-        ),
+        body: body,
       ),
     );
   }

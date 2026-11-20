@@ -595,6 +595,32 @@ class _SubscriptionEditorState extends State<SubscriptionEditor> {
     return true;
   }
 
+  Widget _animatedConditionalField(Map<String, dynamic> field) {
+    final visible = _isFieldVisible(field);
+    if (field['when'] == null) {
+      return visible ? pluginField(field) : const SizedBox.shrink();
+    }
+    final duration = Duration(
+      milliseconds: MediaQuery.disableAnimationsOf(context) ? 0 : 180,
+    );
+    return AnimatedSize(
+      duration: duration,
+      curve: Curves.easeOutCubic,
+      alignment: Alignment.topCenter,
+      child: AnimatedSwitcher(
+        duration: duration,
+        switchInCurve: Curves.easeOutCubic,
+        switchOutCurve: Curves.easeInCubic,
+        child: visible
+            ? KeyedSubtree(
+                key: ValueKey('field/${field['key']}'),
+                child: pluginField(field),
+              )
+            : const SizedBox.shrink(key: ValueKey('hidden')),
+      ),
+    );
+  }
+
   List<Widget> _buildPluginFieldBlocks(
     BuildContext context,
     List<Map<String, dynamic>> pluginFields,
@@ -606,24 +632,24 @@ class _SubscriptionEditorState extends State<SubscriptionEditor> {
       final current = pluginFields[i];
       final group = (current['group'] as String? ?? '').trim();
       if (group.isEmpty) {
-        if (_isFieldVisible(current)) {
-          blocks.add(pluginField(current));
+        if (current['when'] != null || _isFieldVisible(current)) {
+          blocks.add(_animatedConditionalField(current));
         }
         i++;
         continue;
       }
-      final grouped = <Map<String, dynamic>>[];
+      final allInGroup = <Map<String, dynamic>>[];
+      bool anyVisible = false;
       String? groupDesc;
       while (i < pluginFields.length &&
           ((pluginFields[i]['group'] as String? ?? '').trim() == group)) {
         final f = pluginFields[i];
         groupDesc ??= (f['groupDescription'] as String?)?.trim();
-        if (_isFieldVisible(f)) {
-          grouped.add(f);
-        }
+        allInGroup.add(f);
+        if (_isFieldVisible(f)) anyVisible = true;
         i++;
       }
-      if (grouped.isEmpty) continue;
+      if (!anyVisible) continue;
       blocks.add(
         Container(
           margin: const EdgeInsets.only(bottom: 14),
@@ -656,7 +682,7 @@ class _SubscriptionEditorState extends State<SubscriptionEditor> {
                 ),
               ],
               const SizedBox(height: 12),
-              for (final field in grouped) pluginField(field),
+              for (final field in allInGroup) _animatedConditionalField(field),
             ],
           ),
         ),
@@ -974,24 +1000,17 @@ class _RemoteMultiSelectSheetState extends State<_RemoteMultiSelectSheet> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(20, 14, 12, 8),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    widget.title,
-                    style: const TextStyle(
-                      fontSize: 17,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
+            padding: const EdgeInsets.fromLTRB(20, 2, 20, 10),
+            child: Semantics(
+              header: true,
+              child: Text(
+                widget.title,
+                style: const TextStyle(
+                  fontSize: 16,
+                  height: 1.4,
+                  fontWeight: FontWeight.w600,
                 ),
-                IconButton(
-                  tooltip: '关闭',
-                  onPressed: () => Navigator.pop(context),
-                  icon: const Icon(Icons.close),
-                ),
-              ],
+              ),
             ),
           ),
           Padding(

@@ -10,18 +10,57 @@ Future<T?> showAppSheet<T>({
     context: context,
     isScrollControlled: true,
     useSafeArea: true,
-    showDragHandle: true,
+    showDragHandle: false,
     clipBehavior: Clip.antiAlias,
-    builder: (context) => Padding(
-      padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
-      child: ConstrainedBox(
-        constraints: BoxConstraints(
-          maxHeight: MediaQuery.sizeOf(context).height * .82,
-        ),
-        child: SafeArea(top: false, child: builder(context)),
-      ),
-    ),
+    sheetAnimationStyle: MediaQuery.disableAnimationsOf(context)
+        ? AnimationStyle.noAnimation
+        : null,
+    builder: (context) => _SheetFrame(child: builder(context)),
   );
+}
+
+class _SheetFrame extends StatelessWidget {
+  const _SheetFrame({required this.child});
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Padding(
+      padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+      child: SafeArea(
+        top: false,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.sizeOf(context).height * .86,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Tooltip(
+                message: '关闭面板',
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => Navigator.maybePop(context),
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(24, 10, 24, 8),
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: colors.outlineVariant,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                      child: const SizedBox(width: 32, height: 4),
+                    ),
+                  ),
+                ),
+              ),
+              Flexible(child: child),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class SheetDialog extends StatelessWidget {
@@ -36,30 +75,52 @@ class SheetDialog extends StatelessWidget {
   final List<Widget> actions;
   @override
   Widget build(BuildContext context) {
-    final header = Row(
-      children: [
-        Expanded(
-          child: DefaultTextStyle.merge(
-            style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
-            child: title,
+    final colors = Theme.of(context).colorScheme;
+    final header = Padding(
+      padding: const EdgeInsets.fromLTRB(4, 2, 4, 8),
+      child: Semantics(
+        header: true,
+        child: DefaultTextStyle.merge(
+          style: TextStyle(
+            fontSize: 16,
+            height: 1.4,
+            fontWeight: FontWeight.w600,
+            color: colors.onSurface,
           ),
+          child: title,
         ),
-        IconButton(
-          tooltip: '关闭面板',
-          onPressed: () => Navigator.pop(context),
-          icon: const Icon(Icons.close),
+      ),
+    );
+    final body = ListTileTheme(
+      data: ListTileThemeData(
+        minTileHeight: 48,
+        minVerticalPadding: 4,
+        minLeadingWidth: 22,
+        horizontalTitleGap: 12,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 10),
+        iconColor: colors.onSurfaceVariant,
+        titleTextStyle: TextStyle(
+          fontSize: 15,
+          height: 1.3,
+          color: colors.onSurface,
         ),
-      ],
+        subtitleTextStyle: TextStyle(
+          fontSize: 12,
+          height: 1.35,
+          color: colors.onSurfaceVariant,
+        ),
+      ),
+      child: Padding(padding: const EdgeInsets.only(bottom: 8), child: content),
     );
-    final body = Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: content,
-    );
-    final footer = OverflowBar(
-      spacing: 8,
-      overflowSpacing: 4,
-      alignment: MainAxisAlignment.end,
-      children: actions,
+    final footer = Padding(
+      padding: const EdgeInsets.only(top: 4),
+      child: OverflowBar(
+        spacing: 8,
+        overflowSpacing: 4,
+        alignment: MainAxisAlignment.end,
+        overflowAlignment: OverflowBarAlignment.end,
+        children: actions,
+      ),
     );
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
@@ -118,52 +179,55 @@ Future<T?> showChoiceSheet<T>({
   T? selected,
 }) => showAppSheet<T>(
   context: context,
-  builder: (context) => SheetDialog(
-    title: Text(title),
-    content: Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        for (final choice in choices)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 6),
-            child: ListTile(
-              dense: true,
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 12,
-                vertical: 4,
-              ),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(14),
-              ),
-              selected: choice.value == selected,
-              selectedTileColor: Colors.transparent,
-              enabled: choice.enabled,
-              leading: choice.icon == null ? null : Icon(choice.icon),
-              title: Text(
-                choice.label,
-                style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
+  builder: (context) {
+    final colors = Theme.of(context).colorScheme;
+    return SheetDialog(
+      title: Text(title),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (final choice in choices)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: ListTile(
+                dense: true,
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 4,
                 ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                selected: choice.value == selected,
+                selectedTileColor: colors.primary.withValues(alpha: .09),
+                selectedColor: colors.primary,
+                enabled: choice.enabled,
+                leading: choice.icon == null ? null : Icon(choice.icon),
+                title: Text(
+                  choice.label,
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: choice.value == selected
+                        ? FontWeight.w600
+                        : FontWeight.w500,
+                  ),
+                ),
+                subtitle: choice.description == null
+                    ? null
+                    : Text(
+                        choice.description!,
+                        style: const TextStyle(fontSize: 12, height: 1.4),
+                      ),
+                trailing: choice.value == selected
+                    ? Icon(Icons.check_rounded, color: colors.primary, size: 20)
+                    : null,
+                onTap: () => Navigator.pop(context, choice.value),
               ),
-              subtitle: choice.description == null
-                  ? null
-                  : Text(
-                      choice.description!,
-                      style: const TextStyle(fontSize: 12, height: 1.4),
-                    ),
-              trailing: choice.value == selected
-                  ? Icon(
-                      Icons.check_circle,
-                      color: Theme.of(context).colorScheme.primary,
-                    )
-                  : null,
-              onTap: () => Navigator.pop(context, choice.value),
             ),
-          ),
-      ],
-    ),
-  ),
+        ],
+      ),
+    );
+  },
 );
 
 class SheetSelectField extends StatelessWidget {
@@ -239,14 +303,96 @@ class SheetMenuButton<T> extends StatelessWidget {
     tooltip: tooltip,
     icon: const Icon(Icons.more_vert),
     onPressed: () async {
-      final selected = await showChoiceSheet(
-        context: context,
-        title: tooltip,
-        choices: choices,
-      );
+      final useGrid =
+          choices.length >= 2 &&
+          choices.length <= 4 &&
+          choices.every((c) => c.icon != null && c.description == null);
+      final Future<T?> pending = useGrid
+          ? showAppSheet<T>(
+              context: context,
+              builder: (context) => SheetDialog(
+                title: Text(tooltip),
+                content: _SheetActionGrid<T>(choices: choices),
+              ),
+            )
+          : showChoiceSheet(context: context, title: tooltip, choices: choices);
+      final selected = await pending;
       if (selected != null && context.mounted) onSelected(selected);
     },
   );
+}
+
+class _SheetActionGrid<T> extends StatelessWidget {
+  const _SheetActionGrid({required this.choices});
+  final List<SheetChoice<T>> choices;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        const gap = 8.0;
+        final scaledWidth =
+            MediaQuery.textScalerOf(context).scale(14) / 14 * 92;
+        final count = ((constraints.maxWidth + gap) / (scaledWidth + gap))
+            .floor()
+            .clamp(1, choices.length);
+        final width = (constraints.maxWidth - gap * (count - 1)) / count;
+        return Wrap(
+          spacing: gap,
+          runSpacing: gap,
+          children: [
+            for (final choice in choices)
+              SizedBox(
+                width: width,
+                child: Opacity(
+                  opacity: choice.enabled ? 1 : 0.42,
+                  child: Material(
+                    color: colors.surfaceContainerLow,
+                    borderRadius: BorderRadius.circular(14),
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(14),
+                      onTap: choice.enabled
+                          ? () => Navigator.pop(context, choice.value)
+                          : null,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 12,
+                        ),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              choice.icon,
+                              size: 22,
+                              color: colors.onSurface,
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              choice.label,
+                              textAlign: TextAlign.center,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 13.5,
+                                height: 1.35,
+                                fontWeight: FontWeight.w500,
+                                color: colors.onSurface,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        );
+      },
+    );
+  }
 }
 
 Future<TimeOfDay?> showTimeSheet({

@@ -42,6 +42,8 @@ class _InboxPageState extends State<InboxPage> with WidgetsBindingObserver {
   String? source;
   final searchController = TextEditingController();
   final inboxCaptureKey = GlobalKey();
+  final subscriptionKey = GlobalKey<SubscriptionManagementPageState>();
+  final subscriptionActions = ValueNotifier<(bool, bool)>((false, true));
 
   @override
   void initState() {
@@ -82,6 +84,7 @@ class _InboxPageState extends State<InboxPage> with WidgetsBindingObserver {
     timer?.cancel();
     searchDebounce?.cancel();
     searchController.dispose();
+    subscriptionActions.dispose();
     super.dispose();
   }
 
@@ -440,24 +443,7 @@ class _InboxPageState extends State<InboxPage> with WidgetsBindingObserver {
                     child: Divider(height: 1),
                   ),
                   destination('来源', Icons.grid_view_outlined, 1),
-                  ListTile(
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 28),
-                    leading: const Icon(Icons.subscriptions_outlined),
-                    title: const Text(
-                      '订阅管理',
-                      style: TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                    onTap: () {
-                      Navigator.pop(context);
-                      Navigator.of(context).push(
-                        MaterialPageRoute<void>(
-                          builder: (_) => SubscriptionManagementPage(
-                            repository: widget.repository,
-                          ),
-                        ),
-                      );
-                    },
-                  ),
+                  destination('订阅管理', Icons.subscriptions_outlined, 3),
                 ],
               ),
             ),
@@ -475,9 +461,12 @@ class _InboxPageState extends State<InboxPage> with WidgetsBindingObserver {
     final allSelectedStarred = messages
         .where((message) => selectedIds.contains(message.id))
         .every((message) => message.starred);
-    final title = page == 0
-        ? (source ?? ['收件箱', '未读消息', '收藏'][filter])
-        : ['收件箱', '来源', '设置'][page];
+    final title = switch (page) {
+      0 => source ?? ['收件箱', '未读消息', '收藏'][filter],
+      1 => '来源',
+      3 => '订阅管理',
+      _ => '设置',
+    };
     return PopScope(
       canPop: selectedIds.isEmpty,
       onPopInvokedWithResult: (didPop, result) {
@@ -558,6 +547,30 @@ class _InboxPageState extends State<InboxPage> with WidgetsBindingObserver {
                     ),
                   ],
                 ),
+              if (page == 3 && selectedIds.isEmpty)
+                ValueListenableBuilder<(bool, bool)>(
+                  valueListenable: subscriptionActions,
+                  builder: (_, state, _) => Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        tooltip: '服务器配置',
+                        onPressed: state.$1
+                            ? () => subscriptionKey.currentState
+                                  ?.configureServer()
+                            : null,
+                        icon: const Icon(Icons.tune_rounded),
+                      ),
+                      IconButton(
+                        tooltip: '刷新订阅',
+                        onPressed: state.$2
+                            ? () => subscriptionKey.currentState?.refresh()
+                            : null,
+                        icon: const Icon(Icons.refresh),
+                      ),
+                    ],
+                  ),
+                ),
             ],
           ),
           body: SafeArea(
@@ -588,6 +601,17 @@ class _InboxPageState extends State<InboxPage> with WidgetsBindingObserver {
                       child: switch (page) {
                         0 => ColoredBox(color: colors.surface, child: _inbox()),
                         1 => _sources(),
+                        3 => SubscriptionManagementPage(
+                          key: subscriptionKey,
+                          repository: widget.repository,
+                          embedded: true,
+                          onActionStateChanged: (canConfigure, canRefresh) {
+                            subscriptionActions.value = (
+                              canConfigure,
+                              canRefresh,
+                            );
+                          },
+                        ),
                         _ => SettingsPage(
                           repository: widget.repository,
                           settings: settings,
@@ -600,41 +624,47 @@ class _InboxPageState extends State<InboxPage> with WidgetsBindingObserver {
               ],
             ),
           ),
-          bottomNavigationBar: selectedIds.isEmpty
-              ? null
-              : SafeArea(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 4,
-                    ),
-                    child: Wrap(
-                      alignment: WrapAlignment.spaceEvenly,
-                      children: [
-                        TextButton.icon(
-                          onPressed: acting ? null : () => _batch('read'),
-                          icon: const Icon(Icons.done_all),
-                          label: const Text('已读'),
-                        ),
-                        TextButton.icon(
-                          onPressed: acting
-                              ? null
-                              : () => _batch(
-                                  'starred',
-                                  value: !allSelectedStarred,
-                                ),
-                          icon: const Icon(Icons.bookmark_border_rounded),
-                          label: Text(allSelectedStarred ? '取消收藏' : '收藏'),
-                        ),
-                        TextButton.icon(
-                          onPressed: acting ? null : () => _batch('delete'),
-                          icon: const Icon(Icons.delete_outline),
-                          label: const Text('删除'),
-                        ),
-                      ],
+          bottomNavigationBar: AnimatedSize(
+            duration: Duration(
+              milliseconds: MediaQuery.disableAnimationsOf(context) ? 0 : 180,
+            ),
+            curve: Curves.easeOutCubic,
+            child: selectedIds.isEmpty
+                ? const SizedBox.shrink()
+                : SafeArea(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 4,
+                      ),
+                      child: Wrap(
+                        alignment: WrapAlignment.spaceEvenly,
+                        children: [
+                          TextButton.icon(
+                            onPressed: acting ? null : () => _batch('read'),
+                            icon: const Icon(Icons.done_all),
+                            label: const Text('已读'),
+                          ),
+                          TextButton.icon(
+                            onPressed: acting
+                                ? null
+                                : () => _batch(
+                                    'starred',
+                                    value: !allSelectedStarred,
+                                  ),
+                            icon: const Icon(Icons.bookmark_border_rounded),
+                            label: Text(allSelectedStarred ? '取消收藏' : '收藏'),
+                          ),
+                          TextButton.icon(
+                            onPressed: acting ? null : () => _batch('delete'),
+                            icon: const Icon(Icons.delete_outline),
+                            label: const Text('删除'),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
-                ),
+          ),
         ),
       ),
     );
