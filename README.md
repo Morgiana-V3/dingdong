@@ -1,158 +1,135 @@
 # 叮咚 · Dingdong
 
-一个可自部署的 Android 推送收件箱与插件化内容引擎。电脑脚本或自定义服务端插件通过 HTTP API 发送 HTML、Markdown 或纯文本，手机接收后离线保存与阅读。
+一个可自部署的 Android 私人推送收件箱与插件化内容引擎。  
+你可以用一行 HTTP 请求把任意自定义排版的内容推送到手机离线阅读；也可以在服务器部署插件引擎，按计划抓取你关注的网站、用 AI 过滤与总结，再按自定义 HTML 样式推到手机。
 
-当前版本 **0.2.0**（MIT 开源）。客户端使用 Flutter 和 Kotlin；服务端由极简消息中转（FastAPI + SQLite）与可选插件引擎（Node.js + Cordis）组成，两套服务均支持 Docker Compose 部署。
+## 它能做到什么
 
-## 两种使用模式
+- **不只是通知栏一行字，而是完整富文本卡片**  
+  支持自定义 HTML + 内联 CSS、Markdown、表格、多图与本地 SVG 素材；手机端离线保存、全文搜索、日期与来源筛选、收藏、批量管理、全屏缩放看图与本地 JSON 备份。
+- **数据完全归你自己**  
+  服务端只做临时中转，手机下载落盘后服务器立即清除正文；支持后台长连接、断线重连与离线补收。
+- **App 开箱即用，无需为新功能重新编译**  
+  直接安装现成 APK，填入自己的服务器地址和密钥即可使用。服务端新增插件后，**手机 App 会自动渲染对应的配置表单、远程搜索多选与登录入口**。
+- **高度可定制的服务端插件（人类与 AI 助手都能快速编写）**  
+  - **免改客户端登录**：需要网站 Cookie 或 Token 时，插件声明登录规则，手机在独立隔离 WebView 中完成登录并加密回传服务端。
+  - **按需组合多模型 AI**：服务器统一管理多个 AI 服务商，插件可自由指定不同模型（例如轻量模型过滤噪音、强模型生成导读），也可拿原始配置自行发起定制请求。
+  - **所见即所得模板**：支持浏览器直接打开 `template.html` 调样式，推送时自动内联 CSS/素材并转为安全静态 HTML。
 
-1. **纯净模式（App + Relay，推荐大多数用户）**
-   只部署轻量的 `services/relay/`。任何语言、脚本、Cron、n8n 或 GitHub Actions 只要调用 `POST /v1/messages` 即可推送完全自定义的 HTML（含内联 CSS 与内嵌图片）、Markdown 或纯文本。手机 App 开箱即用，收件箱功能完全独立于插件引擎。
-2. **插件引擎模式（App + Relay + Engine，可选）**
-   额外部署 `services/engine/`（基于 Koishi 同源的 Cordis 插件内核，无 Playwright 依赖，镜像轻量）。将自定义插件放入 `plugins/` 目录即可自动加载调度，手机 App 与 Web 管理台按插件声明的 Schema 自动生成配置表单与登录入口，并支持统一 AI 配置与汇总推送。
+---
 
-## 核心功能
+## 快速上手
 
-- **自定义正文**：保留 HTML 内联 CSS，支持表格、卡片和内嵌图片；同时支持 Markdown 与纯文本；阅读页禁用脚本与外链资源。
-- **离线收件箱**：全文搜索、日期与来源筛选、未读、收藏、来源静默、批量操作、删除撤销、JSON 本地备份导出与合并导入。
-- **图片预览**：全屏查看、双指缩放、左右切换与保存原图。
-- **后台接收**：Android 常驻前台服务与 WebSocket 长连接，断线重连、离线补收、落盘确认后清除服务器正文、幂等去重。
-- **通用 App 配置**：App 内填写服务器地址与接收密钥，更换服务器无需重新编译；支持服务器直连与连接诊断。
-- **AI 友好的插件生态**：参考 Koishi 的 Cordis 插件机制，提供 [插件开发指南](docs/PLUGIN_GUIDE.md)、`dingdong-engine/sdk` 统一 TypeScript SDK、`npm run plugin:create` 一键脚手架与 `npm run plugin:test` 校验工具，可直接让 AI 编程助手帮你编写自定义推送插件。
-- **通用声明式凭据（`web-cookie` / `token`）**：需要网站登录态的自定义插件只需声明 `auth` 元数据，手机 App 即可在独立隔离 WebView 中完成登录并通过一次性配对码安全回传给服务端，零平台硬编码。
+### 懒人方案：复制提示词交给 AI Agent 一键部署
 
-## 工作方式
+如果你正在使用 AI 编程助手（Antigravity / Cursor / Claude Code / Codex 等），直接把下面这段提示词发给它，即可自动完成服务端部署、HTTPS 代理配置、App 安装与首条测试推送：
 
 ```text
-任意脚本 / Engine 插件 ── HTTP POST /v1/messages ──> services/relay（暂存未送达消息）
-                                                         │
-                                                   WebSocket 通知
-                                                         ↓
-                                                 Android 下载并保存 SQLite
-                                                         │
-                                                    返回接收确认
-                                                         ↓
-                                                 服务器清除正文，保留去重记录
+请帮我部署并配置当前仓库的「叮咚（Dingdong）」私人推送服务与 Android App。请按以下步骤执行：
+1. 先向我确认 3 件事：
+   - 部署模式：仅核心推送中转（services/relay），还是完整版（services/relay + services/engine 插件引擎）；
+   - 我的服务器 SSH 信息与访问方式（域名 HTTPS 还是公网 IP 直连）；
+   - 我的 Android 手机是否已通过 USB 连接电脑（用于自动安装 APK）。
+2. 在服务器上分别生成两个 32 位以上独立随机密钥（DINGDONG_SEND_TOKEN 和 DINGDONG_READ_TOKEN），写入权限为 600 的 .env（绝不写入 Git 仓库），通过 Docker Compose 启动对应服务。
+3. 如使用域名与插件引擎，参考 services/engine/deploy/nginx.conf.template 配置 Nginx 反向代理（确保开启 /v1/stream 的 WebSocket 转发，并将 /v1/engine/ 转发到插件引擎），校验 /health 与 /v1/engine/health 均返回正常。
+4. 帮我获取或安装 Android App：优先指引我从 Releases 下载 APK；如果我已连接 USB 手机且本机有 Flutter 环境，也可直接编译并通过 adb 安装到手机。
+5. 等我在 App 的「设置 → 服务器连接」填入服务器地址和 DINGDONG_READ_TOKEN 后，使用 tools/send.py 发送一条测试 HTML 消息验证端到端送达。
 ```
 
-`queued` 表示服务器已收下；`received` 表示手机已落盘。**手机是历史消息的主要存储位置**，换机或清空数据前请在 App 设置中导出备份。
+### 手动步骤：第一步 安装 Android App
 
-## 快速开始
+前往 [GitHub Releases](../../releases) 下载最新的 `app-release.apk` 安装（支持 Android 8.0 及以上）。  
+安装后打开「设置 → 服务器连接」，填入下一步部署好的服务器地址与接收密钥即可。
 
-### 1. 部署核心消息中转（`services/relay`）
+> 如需自行修改或编译客户端源码，见 [开发与验证文档](docs/development.md)。
+
+### 手动步骤：第二步 部署服务端
+
+按需二选一，均提供 Docker Compose 一键部署：
+
+- **仅需推送收件箱（`services/relay`）**：适合配合自己的脚本、Cron、n8n、GitHub Actions 主动推消息。
+- **完整插件订阅（`services/relay` + `services/engine`）**：在推送基础上，增加定时插件调度、手机端管理任务、AI 过滤总结与网页登录同步 Cookie。
 
 ```sh
+# 1. 启动核心消息中转
 cd services/relay
 cp .env.example .env
-```
-
-运行两次下面的命令生成两个不同的随机密钥（至少 32 字符）：
-
-```sh
-python3 -c 'import secrets; print(secrets.token_urlsafe(36))'
-```
-
-写入 `.env`：
-
-```dotenv
-DINGDONG_SEND_TOKEN=替换为随机发送密钥
-DINGDONG_READ_TOKEN=替换为另一个随机接收密钥
-DINGDONG_BIND=0.0.0.0
-DINGDONG_PORT=8080
-```
-
-启动服务：
-
-```sh
+# 在 .env 中填入两个不同的 32 位以上随机密钥：DINGDONG_SEND_TOKEN / DINGDONG_READ_TOKEN
 chmod 600 .env
 docker compose up -d --build
-curl http://127.0.0.1:8080/health
 ```
-
-公网长期使用建议通过 Nginx 配置 HTTPS 反向代理（需支持 `/v1/stream` 的 WebSocket Upgrade）。
-
-### 2. 安装并配置 App
-
-需要 Flutter SDK、Android SDK 和 JDK 17（支持 Android 8.0 / API 26 及以上）：
 
 ```sh
-cd mobile
-flutter pub get
-flutter build apk --debug
+# 2. （可选）启动插件引擎
+cd services/engine
+cp .env.example .env
+# 填入与 relay 一致的两个密钥
+chmod 600 .env
+docker compose up -d --build
 ```
 
-正式发布签名可通过 `mobile/android/key.properties` 或环境变量 `DINGDONG_KEYSTORE_PATH` / `DINGDONG_KEYSTORE_PASSWORD` / `DINGDONG_KEY_ALIAS` / `DINGDONG_KEY_PASSWORD` 配置。
+公网 HTTPS 反向代理（Nginx）与数据迁移详见 [部署文档](docs/deployment.md) 和 [插件引擎部署说明](services/engine/README.md)。
 
-打开 App，进入「设置 → 服务器连接」，填入服务器地址和 `DINGDONG_READ_TOKEN` 即可开始接收。
+---
 
-### 3. 从电脑或任意脚本发送自定义内容
+## 开始使用
 
-仓库自带零第三方依赖的 Python 发送工具：
+### 方式一：任意脚本直接推一条富文本消息
 
-```powershell
-$env:DINGDONG_URL = 'http://服务器IP:8080'
-$env:DINGDONG_SEND_TOKEN = '你的发送密钥'
-python tools/send.py examples/report.html --title "HTML 报告" --source "电脑脚本" --wait 30
+只需调用 `POST /v1/messages`（Header：`Authorization: Bearer <DINGDONG_SEND_TOKEN>`），或直接使用仓库内置的零依赖 Python 工具：
+
+```sh
+export DINGDONG_URL="https://你的服务器地址"
+export DINGDONG_SEND_TOKEN="你的发送密钥"
+python tools/send.py examples/report.html --title "每日巡检" --source "监控脚本" --wait 30
 ```
 
-也可以直接向 `POST /v1/messages` 发送 JSON（Header：`Authorization: Bearer <DINGDONG_SEND_TOKEN>`）：
+更多发送参数、Markdown/图片内嵌与模板用法见 [脚本发送与模板](docs/sending.md)。
 
-```json
-{
-  "id": "report-001",
-  "source": "监控脚本",
-  "title": "每日巡检",
-  "summary": "所有服务运行正常",
-  "format": "markdown",
-  "content": "## 巡检结果\n\n- API: 正常\n- 数据库: 正常",
-  "priority": "normal"
-}
-```
+### 方式二：定制自己的服务端插件（推荐）
 
-### 4. 可选：部署插件引擎（`services/engine`）
-
-如果你希望服务器按计划自动运行自定义插件（如 RSS 监控、AI 网页摘要等）：
+只需要关注你想要的数据源和展示样式，不用碰手机 App 代码：
 
 ```sh
 cd services/engine
-cp .env.example .env
-# 填入与 relay 相同的 DINGDONG_SEND_TOKEN / DINGDONG_READ_TOKEN
-docker compose up -d --build
+npm install
+
+# 1. 一键生成带完整注释和本地预览模板的插件骨架
+npm run plugin:create my-watcher "我的监控"
+
+# 2. 本地校验并导出静态 HTML 预览（无需连接服务器）
+npm run plugin:test ./plugins/my-watcher -- --out ./preview.html
 ```
 
-参考 [nginx.conf.template](services/engine/deploy/nginx.conf.template) 将 HTTPS 的 `/v1/engine/` 转发到 `127.0.0.1:18890`，App 即可自动识别并开启「订阅管理」。
+把插件目录放入 `services/engine/plugins/`（容器内挂载 `/app/plugins`）并重启引擎，手机 App 的「订阅管理」就会自动识别它。
 
-编写自定义插件请阅读 [插件开发指南](docs/PLUGIN_GUIDE.md)，或直接参考内置于 `services/engine/plugins/` 的官方参考插件：
-- [services/engine/plugins/bilibili-feed](services/engine/plugins/bilibili-feed/README.md)（完整多文件示范：手机网页登录回传 Cookie + 远程关注 UP 主搜索多选 + 双 AI 模型过滤与总结 + 分组表单 + HTML/SVG 模板）
-- [services/engine/plugins/rss-watch](services/engine/plugins/rss-watch/index.ts)（单文件极简示范：纯 HTTP + 游标去重）
-- [services/engine/plugins/ai-web-digest](services/engine/plugins/ai-web-digest/index.ts)（单文件极简示范：网页抓取 + AI 筛选摘要）
+> **小技巧**：你可以直接把 [插件开发指南](docs/PLUGIN_GUIDE.md) 和 [SDK 类型定义](services/engine/sdk/dingdong-plugin.d.ts) 交给 AI 编程助手，描述你想追踪的网站、过滤条件和卡片样式，让它帮你生成插件并用 `npm run plugin:test` 自检。
 
-## 核心 API
+仓库内置了 3 个可直接参考或启用的官方插件：
 
-| 接口 | 服务 | 凭据 | 用途 |
-| --- | --- | --- | --- |
-| `GET /health` | Relay | 无 | 健康检查 |
-| `POST /v1/messages` | Relay | 发送密钥 | 提交消息，返回 HTTP 202 |
-| `GET /v1/messages/{id}/status` | Relay | 发送密钥 | 查询 `queued` / `received` |
-| `GET /v1/messages/{id}` | Relay | 接收密钥 | 下载待接收正文 |
-| `POST /v1/receipts` | Relay | 接收密钥 | 手机落盘后确认接收 |
-| `WS /v1/stream` | Relay | 接收密钥 | 接收待下载消息 ID 通知 |
-| `GET /v1/engine/health` | Engine | 无 | 探测插件引擎是否启用 |
-| `GET /v1/engine/snapshot` | Engine | 接收密钥 | 读取插件、任务、AI 与所需凭据快照 |
-| `POST /v1/engine/commands` | Engine | 接收密钥 | 增删改启停任务与 AI 配置（带版本冲突校验） |
-| `POST /v1/engine/credentials/{id}/*` | Engine | 接收密钥 / 配对码 | 通用凭据配对、加密导入、验证与清除 |
+| 插件 | 风格 | 演示能力 |
+| --- | --- | --- |
+| [bilibili-feed](services/engine/plugins/bilibili-feed/README.md) | 多文件标准结构 | 手机网页登录回传 Cookie、远程搜索多选关注 UP 主、双 AI 模型过滤与导读、分组表单、HTML + SVG 素材模板 |
+| [rss-watch](services/engine/plugins/rss-watch/index.ts) | 单文件极简 | 纯 HTTP 拉取 + 游标增量去重 |
+| [ai-web-digest](services/engine/plugins/ai-web-digest/index.ts) | 单文件极简 | 网页正文抓取 + AI 兴趣筛选摘要 |
 
-## 项目结构
+---
+
+## 仓库结构与延伸文档
 
 ```text
-mobile/                 Flutter 页面与 Kotlin Android 原生实现
-services/
-  relay/                FastAPI 极简消息中转（可单独部署）
-  engine/               Node + Cordis 可选插件引擎、SDK、内置插件、Web 管理台与 CLI
-examples/               HTML 示例文档与模板输入 JSON
-tools/                  零依赖 Python 发送工具与模板渲染器
-docs/                   插件开发指南、部署、发送、架构与开发文档
+mobile/                 Android 客户端源码（Flutter + Kotlin）
+services/relay/         核心消息中转服务
+services/engine/        可选插件引擎、SDK、内置插件与 CLI 工具
+tools/ & examples/      零依赖发送脚本、模板渲染器与示例
+docs/                   详细文档
 ```
+
+- [插件开发指南](docs/PLUGIN_GUIDE.md) — 表单原语、动态登录、多模型 AI 与 HTML 模板写法
+- [部署与迁移](docs/deployment.md) — Docker Compose、HTTPS 反向代理与数据卷迁移
+- [脚本发送与模板](docs/sending.md) — HTTP 接口、本地图片内嵌与模板渲染
+- [技术架构](docs/architecture.md) — 投递状态机、安全沙箱与加密凭据设计
+- [开发与验证](docs/development.md) — 从源码编译 APK、单元测试与真机集成测试
 
 ## 开源协议
 

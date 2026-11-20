@@ -1,6 +1,6 @@
 # 叮咚插件引擎（`services/engine`）
 
-基于 `@cordisjs/core`（Koishi 同源插件内核）的轻量可选服务，用于定时执行自定义插件、管理 AI 配置与加密凭据，并将生成的内容推送至 `services/relay`。
+轻量可选插件引擎服务，用于定时执行自定义插件、管理 AI 配置与加密凭据，并将生成的内容推送至 `services/relay`。
 
 ## 快速部署（Docker Compose）
 

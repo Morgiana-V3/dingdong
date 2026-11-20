@@ -27,7 +27,7 @@
 
 ## 3. 可选插件引擎（`services/engine/`）
 
-基于 `@cordisjs/core`（Koishi 同源插件内核）构建，无浏览器（Playwright）依赖，镜像轻量：
+基于 `@cordisjs/core` 插件内核与 Node.js 22 原生 TypeScript 构建，轻量无浏览器依赖：
 
 - **动态插件加载**：启动时扫描 `PLUGINS_DIR`（默认 `./plugins`，Docker 挂载 `/app/plugins`）自动识别 `*/src/index.ts` 与 `*/index.ts`（兼容 `.mts / .mjs / .js`），单个插件出错自动隔离。
 - **宿主能力注入（`ctx` / `job`）**：

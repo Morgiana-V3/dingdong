@@ -1,6 +1,6 @@
 # 叮咚（Dingdong）插件开发指南（人类 & AI Coding Agent 通用）
 
-叮咚插件引擎（`services/engine/`）基于 **Cordis**（Koishi 同源插件内核）与 **Node.js 22+ 原生 TypeScript 支持** 构建。你只需要编写一个单文件插件并放入 `plugins/<插件名>/index.ts`（同时兼容 `.mts / .mjs / .js`，**无需编译步骤**），重启引擎即可自动加载，**手机 App 和 Web 管理台会按你声明的 `fields` 与 `auth` 自动生成配置表单和登录入口，无需修改客户端代码。**
+叮咚插件引擎（`services/engine/`）基于 **Node.js 22+ 原生 TypeScript** 构建。你只需要编写插件并放入 `plugins/<插件名>/src/index.ts` 或 `plugins/<插件名>/index.ts`（同时兼容 `.mts / .mjs / .js`，**无需编译步骤**），重启引擎即可自动加载，**手机 App 和 Web 管理台会按你声明的 `fields` 与 `auth` 自动生成配置表单和登录入口，无需修改客户端代码。**
 
 > **给 AI 编程助手的提示**：阅读本指南及 [dingdong-plugin.d.ts](../services/engine/sdk/dingdong-plugin.d.ts) 后即可直接编写插件，完成后运行 `npm run plugin:test <插件目录>` 校验。
 
